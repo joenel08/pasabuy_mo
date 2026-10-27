@@ -5,10 +5,25 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+import '../../controllers/feed_controller.dart';
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../core/translations.dart';
 import '../../services/post_service.dart';
+import '../../services/transaction_service.dart';
+
+class _ItemForm {
+  final title = TextEditingController();
+  final description = TextEditingController();
+  final slots = TextEditingController();
+  final List<File> images = [];
+
+  void dispose() {
+    title.dispose();
+    description.dispose();
+    slots.dispose();
+  }
+}
 
 class PostFormScreen extends StatefulWidget {
   final String initialType;
@@ -18,16 +33,15 @@ class PostFormScreen extends StatefulWidget {
 }
 
 class _PostFormScreenState extends State<PostFormScreen> {
-  final _form = GlobalKey<FormState>();
+  final _formKey = GlobalKey<FormState>();
   final _title = TextEditingController();
   final _desc = TextEditingController();
   final _origin = TextEditingController();
   final _destination = TextEditingController();
-  final _slots = TextEditingController();
 
   late String _type = widget.initialType;
   DateTime? _travelDate;
-  final List<File> _images = [];
+  final List<_ItemForm> _items = [_ItemForm()];
   bool _saving = false;
 
   @override
@@ -36,17 +50,22 @@ class _PostFormScreenState extends State<PostFormScreen> {
     _desc.dispose();
     _origin.dispose();
     _destination.dispose();
-    _slots.dispose();
+    for (final i in _items) {
+      i.dispose();
+    }
     super.dispose();
   }
 
-  Future<void> _pickImages() async {
-    final picker = ImagePicker();
-    final files = await picker.pickMultiImage(imageQuality: 75);
+  Future<void> _pickItemImages(int index) async {
+    final files = await ImagePicker().pickMultiImage(
+      imageQuality: 75,
+      maxWidth: 1600, // ← forces resize → re-encode to JPEG
+      maxHeight: 1600, // ← same
+    );
     if (files.isEmpty) return;
     setState(() {
-      for (final f in files.take(5 - _images.length)) {
-        _images.add(File(f.path));
+      for (final f in files.take(5 - _items[index].images.length)) {
+        _items[index].images.add(File(f.path));
       }
     });
   }
@@ -61,35 +80,95 @@ class _PostFormScreenState extends State<PostFormScreen> {
     if (d != null) setState(() => _travelDate = d);
   }
 
+  void _addItem() => setState(() => _items.add(_ItemForm()));
+
+  void _removeItem(int index) {
+    if (_items.length <= 1) return;
+    setState(() {
+      _items[index].dispose();
+      _items.removeAt(index);
+    });
+  }
+
   Future<void> _submit() async {
-    if (!_form.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) return;
+// Quick pre-check — fetch fees and warn early if blocked
+    try {
+      final fees = await context.read<TransactionService>().myFees();
+      if (fees.isBlocked && mounted) {
+        final go = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text('Account on hold'),
+            content: Text(
+              '${fees.blockReason ?? 'You have outstanding fees.'}\n\n'
+              'Settle ₱${fees.unpaidTotal.toStringAsFixed(2)} before posting new items.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('View fees'),
+              ),
+            ],
+          ),
+        );
+        if (go == true && mounted) context.push('/fees');
+        return;
+      }
+    } catch (_) {
+      // If the check fails, let the backend decide — don't block on network hiccups
+    }
+
     setState(() => _saving = true);
     try {
-      final service = context.read<PostService>();
-      await service.create(
-        title: _title.text.trim(),
-        description: _desc.text.trim(),
-        type: _type,
-        originLocation: _origin.text.trim(),
-        destinationLocation: _destination.text.trim(),
-        travelDate: _travelDate,
-        slots: int.tryParse(_slots.text.trim()),
-        images: _images,
-      );
+      final payload = _items
+          .map((it) => (
+                title: it.title.text.trim(),
+                description: it.description.text.trim(),
+                slots: int.tryParse(it.slots.text.trim()),
+                images: it.images,
+              ))
+          .toList();
+
+      await context.read<PostService>().create(
+            title: _title.text.trim(),
+            description: _desc.text.trim(),
+            type: _type,
+            originLocation: _origin.text.trim(),
+            destinationLocation: _destination.text.trim(),
+            travelDate: _travelDate,
+            items: payload,
+          );
+
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+
+      // ---- Capture references BEFORE pop ----
+      final messenger = ScaffoldMessenger.of(context);
+      final feedCtrl = context.read<FeedController>();
+      final successMsg = T.read(context, 'post_published');
+
+      // ---- Pop back to feed ----
+      context.pop();
+
+      // ---- Show success + refresh feed ----
+      messenger.showSnackBar(
         SnackBar(
-          content: Text(T.of(context, 'post_published')),
+          content: Text(successMsg),
           backgroundColor: AppColors.success,
         ),
       );
-      context.pop();
+      feedCtrl.load();
     } catch (e) {
       if (!mounted) return;
-      String msg = T.of(context, 'failed_to_publish');
-      if (e is DioException) {
-        msg = context.read<ApiClient>().prettyError(e);
-      }
+      final msg = e is DioException
+          ? context.read<ApiClient>().prettyError(e)
+          : T.read(context, 'failed_to_publish');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(msg), backgroundColor: AppColors.danger),
       );
@@ -113,11 +192,11 @@ class _PostFormScreenState extends State<PostFormScreen> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Form(
-            key: _form,
+            key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ---- Type selector ----
+                // Type selector
                 Row(
                   children: [
                     Expanded(
@@ -154,8 +233,9 @@ class _PostFormScreenState extends State<PostFormScreen> {
                       hintText: T.of(context, 'title_hint'),
                       counterText: '',
                     ),
+                    // Validators run OUTSIDE build → must use T.read
                     validator: (v) => (v == null || v.trim().isEmpty)
-                        ? T.of(context, 'title_required')
+                        ? T.read(context, 'title_required')
                         : null,
                   ),
                 ),
@@ -164,12 +244,12 @@ class _PostFormScreenState extends State<PostFormScreen> {
                   label: T.of(context, 'description_label'),
                   child: TextFormField(
                     controller: _desc,
-                    maxLines: 5,
+                    maxLines: 3,
                     decoration: InputDecoration(
                       hintText: T.of(context, 'description_hint'),
                     ),
                     validator: (v) => (v == null || v.trim().isEmpty)
-                        ? T.of(context, 'description_required')
+                        ? T.read(context, 'description_required')
                         : null,
                   ),
                 ),
@@ -202,7 +282,6 @@ class _PostFormScreenState extends State<PostFormScreen> {
                   ],
                 ),
 
-                // ---- Travel date picker ----
                 _Field(
                   label: T.of(context, 'travel_deadline_label'),
                   child: InkWell(
@@ -240,104 +319,40 @@ class _PostFormScreenState extends State<PostFormScreen> {
                   ),
                 ),
 
-                // ---- Slots ----
-                _Field(
-                  label: T.of(context, 'slots_label'),
-                  child: TextFormField(
-                    controller: _slots,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      hintText: T.of(context, 'slots_hint'),
-                      helperText: T.of(context, 'slots_helper'),
-                    ),
-                    validator: (v) {
-                      if (v == null || v.trim().isEmpty) return null;
-                      final n = int.tryParse(v.trim());
-                      if (n == null || n <= 0) {
-                        return T.of(context, 'slots_error_positive');
-                      }
-                      if (n > 999) return T.of(context, 'slots_error_max');
-                      return null;
-                    },
+                // Items section
+                const SizedBox(height: 8),
+                Text(
+                  'Items (${_items.length})',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
                   ),
                 ),
+                const SizedBox(height: 8),
 
-                // ---- Photos ----
-                _Field(
-                  label: T.of(context, 'photos_label'),
-                  child: SizedBox(
-                    height: 90,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      children: [
-                        ..._images.asMap().entries.map((e) => Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: Stack(
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Image.file(
-                                      e.value,
-                                      width: 90,
-                                      height: 90,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                  Positioned(
-                                    top: 2,
-                                    right: 2,
-                                    child: GestureDetector(
-                                      onTap: () => setState(
-                                          () => _images.removeAt(e.key)),
-                                      child: Container(
-                                        decoration: const BoxDecoration(
-                                          color: Colors.black54,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        padding: const EdgeInsets.all(3),
-                                        child: const Icon(Icons.close_rounded,
-                                            size: 12, color: Colors.white),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )),
-                        if (_images.length < 5)
-                          GestureDetector(
-                            onTap: _pickImages,
-                            child: Container(
-                              width: 90,
-                              height: 90,
-                              decoration: BoxDecoration(
-                                color: AppColors.borderSoft,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: AppColors.border),
-                              ),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(
-                                      Icons.add_photo_alternate_outlined,
-                                      color: AppColors.textSecondary),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    T.of(context, 'add_photo'),
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
+                ..._items.asMap().entries.map((entry) {
+                  final i = entry.key;
+                  final item = entry.value;
+                  return _ItemFormCard(
+                    index: i,
+                    item: item,
+                    canDelete: _items.length > 1,
+                    onDelete: () => _removeItem(i),
+                    onPickImages: () => _pickItemImages(i),
+                    onRemoveImage: (j) =>
+                        setState(() => item.images.removeAt(j)),
+                  );
+                }),
 
                 const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('Add another item'),
+                  onPressed: _addItem,
+                ),
+
+                const SizedBox(height: 16),
                 FilledButton(
                   onPressed: _saving ? null : _submit,
                   child: _saving
@@ -359,6 +374,168 @@ class _PostFormScreenState extends State<PostFormScreen> {
 }
 
 // ---------------------------------------------------------------------------
+
+class _ItemFormCard extends StatelessWidget {
+  final int index;
+  final _ItemForm item;
+  final bool canDelete;
+  final VoidCallback onDelete;
+  final VoidCallback onPickImages;
+  final ValueChanged<int> onRemoveImage;
+
+  const _ItemFormCard({
+    required this.index,
+    required this.item,
+    required this.canDelete,
+    required this.onDelete,
+    required this.onPickImages,
+    required this.onRemoveImage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Item ${index + 1}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary,
+                ),
+              ),
+              const Spacer(),
+              if (canDelete)
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  color: AppColors.danger,
+                  onPressed: onDelete,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  splashRadius: 18,
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextFormField(
+            controller: item.title,
+            decoration: const InputDecoration(
+              labelText: 'Item name',
+              hintText: 'e.g. Shiseido serum 50ml',
+            ),
+            // Validators must use context.read → use T.read
+            validator: (v) => (v == null || v.trim().isEmpty)
+                ? T.read(context, 'item_name_required')
+                : null,
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: item.description,
+            maxLines: 2,
+            decoration: const InputDecoration(
+              labelText: 'Item description',
+              hintText: 'Details, size, color…',
+            ),
+            validator: (v) => (v == null || v.trim().isEmpty)
+                ? T.read(context, 'item_description_required')
+                : null,
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: item.slots,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Slots (optional)',
+              helperText: 'How many buyers can you accept for this item?',
+            ),
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) return null;
+              final n = int.tryParse(v.trim());
+              if (n == null || n <= 0) {
+                return T.read(context, 'slots_error_positive');
+              }
+              if (n > 999) return T.read(context, 'slots_error_max');
+              return null;
+            },
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 80,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                ...item.images.asMap().entries.map((e) => Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Image.file(e.value,
+                                width: 80, height: 80, fit: BoxFit.cover),
+                          ),
+                          Positioned(
+                            top: 2,
+                            right: 2,
+                            child: GestureDetector(
+                              onTap: () => onRemoveImage(e.key),
+                              child: Container(
+                                decoration: const BoxDecoration(
+                                  color: Colors.black54,
+                                  shape: BoxShape.circle,
+                                ),
+                                padding: const EdgeInsets.all(3),
+                                child: const Icon(Icons.close_rounded,
+                                    size: 12, color: Colors.white),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )),
+                if (item.images.length < 5)
+                  GestureDetector(
+                    onTap: onPickImages,
+                    child: Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: AppColors.borderSoft,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.add_photo_alternate_outlined,
+                              color: AppColors.textSecondary, size: 18),
+                          SizedBox(height: 2),
+                          Text('Add',
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  color: AppColors.textSecondary)),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _TypeChip extends StatelessWidget {
   final String label;

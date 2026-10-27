@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -10,8 +11,10 @@ import '../../controllers/chat_controller.dart';
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../core/translations.dart';
+import '../../models/message.dart';
 import '../../services/conversation_service.dart';
 import '../../services/transaction_service.dart';
+import '../common/report_sheet.dart';
 
 class ConversationScreen extends StatefulWidget {
   final int conversationId;
@@ -78,13 +81,98 @@ class _ConversationScreenState extends State<ConversationScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${T.of(context, 'could_not_send_image')}: $e'),
+          content: Text('Could not send image: $e'),
           backgroundColor: AppColors.danger,
         ),
       );
     } finally {
       if (mounted) setState(() => _uploadingImage = false);
     }
+  }
+
+  // ---------------------------------------------------------------
+  // Long-press on a message → actions
+  // ---------------------------------------------------------------
+  void _openMessageActions(BuildContext context, Message m,
+      {required bool mine}) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              if ((m.body ?? '').isNotEmpty)
+                ListTile(
+                  leading: const Icon(
+                    Icons.copy_rounded,
+                    color: AppColors.textSecondary,
+                    size: 20,
+                  ),
+                  title: const Text(
+                    'Copy text',
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: m.body!));
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Copied'),
+                        backgroundColor: AppColors.success,
+                      ),
+                    );
+                  },
+                ),
+              if (!mine)
+                ListTile(
+                  leading: const Icon(
+                    Icons.flag_outlined,
+                    color: AppColors.danger,
+                    size: 20,
+                  ),
+                  title: const Text(
+                    'Report message',
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.danger,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    showReportSheet(
+                      context,
+                      targetType: 'message',
+                      targetId: m.id,
+                    );
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // ---------------------------------------------------------------
@@ -103,7 +191,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
         builder: (dialogCtx, setDialogState) => AlertDialog(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text(T.of(dialogCtx, 'propose_deal_title')),
+          title: Text(T.read(dialogCtx, 'propose_deal_title')),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -111,8 +199,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 TextField(
                   controller: descCtrl,
                   decoration: InputDecoration(
-                    labelText: T.of(dialogCtx, 'item_description'),
-                    hintText: T.of(dialogCtx, 'item_description_hint'),
+                    labelText: T.read(dialogCtx, 'item_description'),
+                    hintText: T.read(dialogCtx, 'item_description_hint'),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -120,7 +208,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   controller: priceCtrl,
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
-                    labelText: T.of(dialogCtx, 'agreed_price'),
+                    labelText: T.read(dialogCtx, 'agreed_price'),
                     prefixText: '₱ ',
                   ),
                 ),
@@ -129,7 +217,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   controller: notesCtrl,
                   maxLines: 2,
                   decoration: InputDecoration(
-                    labelText: T.of(dialogCtx, 'notes_optional'),
+                    labelText: T.read(dialogCtx, 'notes_optional'),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -163,14 +251,16 @@ class _ConversationScreenState extends State<ConversationScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 const Icon(
-                                    Icons.add_photo_alternate_outlined,
-                                    color: AppColors.textSecondary),
+                                  Icons.add_photo_alternate_outlined,
+                                  color: AppColors.textSecondary,
+                                ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  T.of(dialogCtx, 'attach_image_optional'),
+                                  T.read(dialogCtx, 'attach_image_optional'),
                                   style: const TextStyle(
-                                      fontSize: 12,
-                                      color: AppColors.textSecondary),
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary,
+                                  ),
                                 ),
                               ],
                             ),
@@ -184,11 +274,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogCtx, false),
-              child: Text(T.of(dialogCtx, 'cancel')),
+              child: Text(T.read(dialogCtx, 'cancel')),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(dialogCtx, true),
-              child: Text(T.of(dialogCtx, 'propose')),
+              child: Text(T.read(dialogCtx, 'propose')),
             ),
           ],
         ),
@@ -199,7 +289,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
     if (descCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(T.of(context, 'item_description_required'))),
+        SnackBar(
+          content: Text(T.read(context, 'item_description_required')),
+        ),
       );
       return;
     }
@@ -215,7 +307,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(T.of(context, 'deal_proposed')),
+          content: Text(T.read(context, 'deal_proposed')),
           backgroundColor: AppColors.success,
         ),
       );
@@ -259,7 +351,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                         chat.otherName.isNotEmpty
                             ? chat.otherName
                             : (chat.otherEmail.isEmpty
-                                ? T.of(context, 'chat_title')
+                                ? T.read(context, 'chat_title')
                                 : chat.otherEmail),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -270,7 +362,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                         ),
                       ),
                       Text(
-                        T.of(context, 'tap_to_view_profile'),
+                        T.read(context, 'tap_to_view_profile'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -286,7 +378,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
               actions: [
                 IconButton(
                   icon: const Icon(Icons.handshake_outlined),
-                  tooltip: T.of(context, 'start_a_deal'),
+                  tooltip: T.read(context, 'start_a_deal'),
                   onPressed: () => _startDeal(context),
                 ),
               ],
@@ -294,7 +386,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
             body: SafeArea(
               child: Column(
                 children: [
-                  // -------- Message list --------
+                  // ---------- Message list ----------
                   Expanded(
                     child: chat.loading && chat.messages.isEmpty
                         ? const Center(
@@ -312,109 +404,119 @@ class _ConversationScreenState extends State<ConversationScreen> {
                                 alignment: mine
                                     ? Alignment.centerRight
                                     : Alignment.centerLeft,
-                                child: Container(
-                                  margin: const EdgeInsets.only(bottom: 6),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 14, vertical: 10),
-                                  constraints: BoxConstraints(
-                                    maxWidth:
-                                        MediaQuery.of(context).size.width *
-                                            0.72,
+                                child: GestureDetector(
+                                  onLongPress: () => _openMessageActions(
+                                    context,
+                                    m,
+                                    mine: mine,
                                   ),
-                                  decoration: BoxDecoration(
-                                    color: mine
-                                        ? AppColors.primary
-                                        : AppColors.surface,
-                                    borderRadius: BorderRadius.only(
-                                      topLeft: const Radius.circular(16),
-                                      topRight: const Radius.circular(16),
-                                      bottomLeft:
-                                          Radius.circular(mine ? 16 : 4),
-                                      bottomRight:
-                                          Radius.circular(mine ? 4 : 16),
+                                  child: Container(
+                                    margin: const EdgeInsets.only(bottom: 6),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 14, vertical: 10),
+                                    constraints: BoxConstraints(
+                                      maxWidth:
+                                          MediaQuery.of(context).size.width *
+                                              0.72,
                                     ),
-                                    border: mine
-                                        ? null
-                                        : Border.all(color: AppColors.border),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      if (m.attachmentUrl != null &&
-                                          m.attachmentUrl!.isNotEmpty)
-                                        Padding(
-                                          padding:
-                                              const EdgeInsets.only(bottom: 6),
-                                          child: ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(10),
-                                            child: Image.network(
-                                              m.attachmentUrl!,
-                                              width: 200,
-                                              fit: BoxFit.cover,
-                                              loadingBuilder:
-                                                  (_, child, progress) {
-                                                if (progress == null) {
-                                                  return child;
-                                                }
-                                                return Container(
-                                                  width: 200,
-                                                  height: 140,
-                                                  color: mine
-                                                      ? Colors.white
-                                                          .withOpacity(0.15)
-                                                      : AppColors.borderSoft,
-                                                  child: const Center(
-                                                    child:
-                                                        CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                      color: Colors.white,
+                                    decoration: BoxDecoration(
+                                      color: mine
+                                          ? AppColors.primary
+                                          : AppColors.surface,
+                                      borderRadius: BorderRadius.only(
+                                        topLeft: const Radius.circular(16),
+                                        topRight: const Radius.circular(16),
+                                        bottomLeft:
+                                            Radius.circular(mine ? 16 : 4),
+                                        bottomRight:
+                                            Radius.circular(mine ? 4 : 16),
+                                      ),
+                                      border: mine
+                                          ? null
+                                          : Border.all(
+                                              color: AppColors.border),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        if (m.attachmentUrl != null &&
+                                            m.attachmentUrl!.isNotEmpty)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                                bottom: 6),
+                                            child: ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                              child: Image.network(
+                                                m.attachmentUrl!,
+                                                width: 200,
+                                                fit: BoxFit.cover,
+                                                loadingBuilder: (_,
+                                                    child, progress) {
+                                                  if (progress == null) {
+                                                    return child;
+                                                  }
+                                                  return Container(
+                                                    width: 200,
+                                                    height: 140,
+                                                    color: mine
+                                                        ? Colors.white
+                                                            .withOpacity(0.15)
+                                                        : AppColors.borderSoft,
+                                                    child: const Center(
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                        color: Colors.white,
+                                                      ),
                                                     ),
-                                                  ),
-                                                );
-                                              },
-                                              errorBuilder: (_, err, __) {
-                                                debugPrint(
-                                                    '[CHAT IMG] failed: ${m.attachmentUrl} → $err');
-                                                return Container(
-                                                  width: 200,
-                                                  height: 120,
-                                                  color: mine
-                                                      ? Colors.white
-                                                          .withOpacity(0.15)
-                                                      : AppColors.borderSoft,
-                                                  child: const Center(
-                                                    child: Icon(Icons
-                                                        .broken_image_outlined),
-                                                  ),
-                                                );
-                                              },
+                                                  );
+                                                },
+                                                errorBuilder: (_, err, __) {
+                                                  debugPrint(
+                                                      '[CHAT IMG] failed: ${m.attachmentUrl} → $err');
+                                                  return Container(
+                                                    width: 200,
+                                                    height: 120,
+                                                    color: mine
+                                                        ? Colors.white
+                                                            .withOpacity(0.15)
+                                                        : AppColors.borderSoft,
+                                                    child: const Center(
+                                                      child: Icon(Icons
+                                                          .broken_image_outlined),
+                                                    ),
+                                                  );
+                                                },
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      if (m.body != null && m.body!.isNotEmpty)
+                                        if (m.body != null &&
+                                            m.body!.isNotEmpty)
+                                          Text(
+                                            m.body!,
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              color: mine
+                                                  ? Colors.white
+                                                  : AppColors.textPrimary,
+                                              height: 1.35,
+                                            ),
+                                          ),
+                                        const SizedBox(height: 4),
                                         Text(
-                                          m.body!,
+                                          D.time(context, m.createdAt),
                                           style: TextStyle(
-                                            fontSize: 14,
+                                            fontSize: 10,
                                             color: mine
                                                 ? Colors.white
-                                                : AppColors.textPrimary,
-                                            height: 1.35,
+                                                    .withOpacity(0.75)
+                                                : AppColors.textMuted,
                                           ),
                                         ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        D.time(context, m.createdAt),
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: mine
-                                              ? Colors.white.withOpacity(0.75)
-                                              : AppColors.textMuted,
-                                        ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               );
@@ -422,8 +524,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
                           ),
                   ),
 
+                  // ---------- Post context banner ----------
                   if (chat.postTitle.isNotEmpty) _PostBanner(chat: chat),
 
+                  // ---------- Input row ----------
                   Container(
                     padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
                     decoration: const BoxDecoration(
@@ -456,7 +560,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                             textInputAction: TextInputAction.send,
                             onSubmitted: (_) => _send(),
                             decoration: InputDecoration(
-                              hintText: T.of(context, 'message_hint'),
+                              hintText: T.read(context, 'message_hint'),
                             ),
                           ),
                         ),
@@ -497,6 +601,8 @@ class _PostBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isOffer = chat.postType == 'offer';
+    final headline =
+        chat.itemTitle.isNotEmpty ? chat.itemTitle : chat.postTitle;
 
     return Container(
       width: double.infinity,
@@ -508,8 +614,8 @@ class _PostBanner extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 28,
-            height: 28,
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
               color: AppColors.primary,
               borderRadius: BorderRadius.circular(8),
@@ -518,7 +624,7 @@ class _PostBanner extends StatelessWidget {
               isOffer
                   ? Icons.flight_takeoff_rounded
                   : Icons.shopping_cart_outlined,
-              size: 15,
+              size: 16,
               color: Colors.white,
             ),
           ),
@@ -538,7 +644,7 @@ class _PostBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 1),
                 Text(
-                  chat.postTitle,
+                  headline,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -547,6 +653,16 @@ class _PostBanner extends StatelessWidget {
                     color: AppColors.textPrimary,
                   ),
                 ),
+                if (chat.itemTitle.isNotEmpty && chat.postTitle.isNotEmpty)
+                  Text(
+                    'from: ${chat.postTitle}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
               ],
             ),
           ),

@@ -11,7 +11,6 @@ import '../../models/transaction.dart';
 import '../../services/review_service.dart';
 import '../../services/transaction_service.dart';
 import '../common/empty_state.dart';
-import '../../core/translations.dart';
 
 class MyDealsScreen extends StatefulWidget {
   const MyDealsScreen({super.key});
@@ -23,6 +22,25 @@ class MyDealsScreenState extends State<MyDealsScreen> {
   List<Transaction> _items = [];
   Map<String, dynamic>? _stats;
   bool _loading = false;
+  String _activeTab = 'all';
+
+  static const _tabs = [
+    'all',
+    'pending',
+    'in_progress',
+    'finishing',
+    'completed',
+    'cancelled',
+  ];
+
+  static const _tabLabels = {
+    'all': 'all_tab',
+    'pending': 'pending_tab',
+    'in_progress': 'in_progress_tab',
+    'finishing': 'finishing_tab',
+    'completed': 'completed_tab',
+    'cancelled': 'cancelled_tab',
+  };
 
   @override
   void initState() {
@@ -45,9 +63,35 @@ class MyDealsScreenState extends State<MyDealsScreen> {
     }
   }
 
+  bool _matchesTab(Transaction tx, String tab) {
+    switch (tab) {
+      case 'all':
+        return true;
+      case 'pending':
+        return tx.status == 'pending';
+      case 'in_progress':
+        return tx.status == 'in_progress';
+      case 'finishing':
+        return tx.status == 'buyer_done' || tx.status == 'pasabuyer_done';
+      case 'completed':
+        return tx.status == 'completed';
+      case 'cancelled':
+        return tx.status == 'cancelled' || tx.status == 'disputed';
+      default:
+        return true;
+    }
+  }
+
+  int _countFor(String tab) =>
+      _items.where((tx) => _matchesTab(tx, tab)).length;
+
+  List<Transaction> get _filteredItems =>
+      _items.where((tx) => _matchesTab(tx, _activeTab)).toList();
+
   @override
   Widget build(BuildContext context) {
     final meId = context.watch<AuthController>().user?.id;
+    final filtered = _filteredItems;
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -71,7 +115,8 @@ class MyDealsScreenState extends State<MyDealsScreen> {
                 padding: const EdgeInsets.all(12),
                 children: [
                   if (_stats != null) _StatsRow(stats: _stats!),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
+
                   InkWell(
                     borderRadius: BorderRadius.circular(14),
                     onTap: () => context.push('/analytics'),
@@ -125,7 +170,17 @@ class MyDealsScreenState extends State<MyDealsScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 14),
+
+                  _FilterPills(
+                    tabs: _tabs,
+                    labels: _tabLabels,
+                    active: _activeTab,
+                    countFor: _countFor,
+                    onChanged: (tab) => setState(() => _activeTab = tab),
+                  ),
+                  const SizedBox(height: 12),
+
                   if (_items.isEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 60),
@@ -135,8 +190,17 @@ class MyDealsScreenState extends State<MyDealsScreen> {
                         subtitle: T.of(context, 'no_deals_sub'),
                       ),
                     )
+                  else if (filtered.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 60),
+                      child: EmptyState(
+                        icon: Icons.filter_alt_off_outlined,
+                        title: T.of(context, 'no_deals_in_tab'),
+                        subtitle: T.of(context, 'no_deals_in_tab_sub'),
+                      ),
+                    )
                   else
-                    ..._items.map((t) => Padding(
+                    ...filtered.map((t) => Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: _DealCard(
                             tx: t,
@@ -144,6 +208,7 @@ class MyDealsScreenState extends State<MyDealsScreen> {
                             onChanged: reload,
                           ),
                         )),
+
                   const SizedBox(height: 32),
                 ],
               ),
@@ -152,6 +217,126 @@ class MyDealsScreenState extends State<MyDealsScreen> {
   }
 }
 
+// ===================================================================
+// Filter pills
+// ===================================================================
+class _FilterPills extends StatelessWidget {
+  final List<String> tabs;
+  final Map<String, String> labels;
+  final String active;
+  final int Function(String) countFor;
+  final ValueChanged<String> onChanged;
+
+  const _FilterPills({
+    required this.tabs,
+    required this.labels,
+    required this.active,
+    required this.countFor,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 38,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: tabs.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final tab = tabs[i];
+          final isActive = tab == active;
+          final count = countFor(tab);
+
+          return _Pill(
+            label: T.of(context, labels[tab]!),
+            count: count,
+            isActive: isActive,
+            onTap: () => onChanged(tab),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  final String label;
+  final int count;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _Pill({
+    required this.label,
+    required this.count,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = isActive ? AppColors.primary : AppColors.surface;
+    final fg = isActive ? Colors.white : AppColors.textPrimary;
+    final countBg = isActive
+        ? Colors.white.withOpacity(0.25)
+        : AppColors.borderSoft;
+    final countFg = isActive ? Colors.white : AppColors.textSecondary;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isActive ? AppColors.primary : AppColors.border,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: fg,
+              ),
+            ),
+            if (count > 0) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                constraints: const BoxConstraints(minWidth: 18),
+                decoration: BoxDecoration(
+                  color: countBg,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$count',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: countFg,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ===================================================================
+// Stats row
+// ===================================================================
 class _StatsRow extends StatelessWidget {
   final Map<String, dynamic> stats;
   const _StatsRow({required this.stats});
@@ -160,6 +345,7 @@ class _StatsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final buyer = stats['as_buyer'] ?? {};
     final seller = stats['as_pasabuyer'] ?? {};
+
     return Row(
       children: [
         Expanded(
@@ -206,31 +392,40 @@ class _StatCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
-              )),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
+            ),
+          ),
           const SizedBox(height: 6),
-          Text(value,
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w800,
-                color: color,
-              )),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
           const SizedBox(height: 2),
-          Text(sub,
-              style: const TextStyle(
-                fontSize: 11,
-                color: AppColors.textMuted,
-              )),
+          Text(
+            sub,
+            style: const TextStyle(
+              fontSize: 11,
+              color: AppColors.textMuted,
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
+// ===================================================================
+// Deal card
+// ===================================================================
 class _DealCard extends StatefulWidget {
   final Transaction tx;
   final int? meId;
@@ -274,7 +469,7 @@ class _DealCardState extends State<_DealCard> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(T.of(context, 'deal_accepted')),
+              content: Text(T.read(context, 'deal_accepted')),
               backgroundColor: AppColors.success,
             ),
           );
@@ -282,7 +477,7 @@ class _DealCardState extends State<_DealCard> {
       });
 
   Future<void> _decline() async {
-    final reason = await _askReason(T.of(context, 'cancel_deal_title'));
+    final reason = await _askReason(T.read(context, 'cancel_deal_title'));
     if (reason == null) return;
     await _run(() async {
       await context.read<TransactionService>().decline(tx.id, reason: reason);
@@ -295,19 +490,19 @@ class _DealCardState extends State<_DealCard> {
       context: context,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          T.of(context, isBuyer ? 'confirm_received_q' : 'confirm_delivered_q'),
-        ),
-        content: Text(T.of(context, 'confirm_both_sides')),
+        title: Text(T.read(
+            context,
+            isBuyer ? 'confirm_received_q' : 'confirm_delivered_q')),
+        content: Text(T.read(context, 'confirm_both_sides')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text(T.of(context, 'cancel')),
+            child: Text(T.read(context, 'cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             style: FilledButton.styleFrom(backgroundColor: AppColors.success),
-            child: Text(T.of(context, 'confirm')),
+            child: Text(T.read(context, 'confirm')),
           ),
         ],
       ),
@@ -332,7 +527,7 @@ class _DealCardState extends State<_DealCard> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(T.of(context, 'thanks_feedback')),
+          content: Text(T.read(context, 'thanks_feedback')),
           backgroundColor: AppColors.success,
         ),
       );
@@ -340,7 +535,7 @@ class _DealCardState extends State<_DealCard> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${T.of(context, 'could_not_submit')}: $e'),
+          content: Text('${T.read(context, 'could_not_submit')}: $e'),
           backgroundColor: AppColors.danger,
         ),
       );
@@ -358,18 +553,18 @@ class _DealCardState extends State<_DealCard> {
           controller: ctrl,
           maxLines: 3,
           decoration: InputDecoration(
-            labelText: T.of(context, 'reason_optional'),
+            labelText: T.read(context, 'reason_optional'),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text(T.of(context, 'keep_deal')),
+            child: Text(T.read(context, 'keep_deal')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-            child: Text(T.of(context, 'cancel_deal')),
+            child: Text(T.read(context, 'cancel_deal')),
           ),
         ],
       ),
@@ -384,6 +579,12 @@ class _DealCardState extends State<_DealCard> {
     final iMustAccept = tx.iMustAccept(widget.meId);
     final iProposed = tx.iProposedDeal(widget.meId);
 
+    final headline =
+        tx.itemTitle.isNotEmpty ? tx.itemTitle : tx.itemDescription;
+    final showSubDescription = tx.itemTitle.isNotEmpty &&
+        tx.itemDescription.isNotEmpty &&
+        tx.itemDescription != tx.itemTitle;
+
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -395,6 +596,7 @@ class _DealCardState extends State<_DealCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ---- Status pill + role ----
             Row(
               children: [
                 Container(
@@ -404,20 +606,21 @@ class _DealCardState extends State<_DealCard> {
                     color: s.bg,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Text(s.label,
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w700,
-                        color: s.fg,
-                      )),
+                  child: Text(
+                    s.label,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: s.fg,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Text(
                   T.of(
-                      context,
-                      tx.role == 'buyer'
-                          ? 'you_are_buying'
-                          : 'you_are_pasabuyer'),
+                    context,
+                    tx.role == 'buyer' ? 'you_are_buying' : 'you_are_pasabuyer',
+                  ),
                   style: const TextStyle(
                     fontSize: 11,
                     color: AppColors.textMuted,
@@ -426,20 +629,46 @@ class _DealCardState extends State<_DealCard> {
               ],
             ),
             const SizedBox(height: 10),
-            Text(tx.itemDescription,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                )),
-            const SizedBox(height: 4),
+
+            // ---- Item title ----
             Text(
-              '${tx.postTitle} · ${T.of(context, 'with_user')} ${tx.otherPartyEmail}',
+              headline,
               style: const TextStyle(
-                fontSize: 12.5,
-                color: AppColors.textSecondary,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+                height: 1.3,
               ),
             ),
+
+            if (showSubDescription) ...[
+              const SizedBox(height: 2),
+              Text(
+                tx.itemDescription,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  color: AppColors.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 4),
+
+            // ---- Post context + other party ----
+            Text(
+              '${tx.postTitle} · ${T.of(context, 'with_user')} ${tx.otherPartyEmail}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12.5,
+                color: AppColors.textMuted,
+              ),
+            ),
+
+            // ---- Money breakdown ----
             if (tx.agreedPrice != null) ...[
               const SizedBox(height: 8),
               _MoneyRow(
@@ -458,6 +687,35 @@ class _DealCardState extends State<_DealCard> {
                   value: '- ₱ ${tx.adminFee!.toStringAsFixed(2)}',
                   color: AppColors.danger,
                 ),
+                // ---- Paid / Unpaid badge (pasabuyer only, completed only) ----
+                if (tx.role == 'pasabuyer')
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Row(
+                      children: [
+                        Icon(
+                          tx.feePaid
+                              ? Icons.check_circle_rounded
+                              : Icons.schedule_rounded,
+                          size: 12,
+                          color: tx.feePaid
+                              ? AppColors.success
+                              : AppColors.warning,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          tx.feePaid ? 'Fee paid' : 'Fee unpaid',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                            color: tx.feePaid
+                                ? AppColors.success
+                                : AppColors.warning,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 if (tx.role == 'pasabuyer' && tx.netPayout != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
@@ -473,27 +731,72 @@ class _DealCardState extends State<_DealCard> {
                   child: Text(
                     T.of(context, 'fee_disclaimer'),
                     style: const TextStyle(
-                        fontSize: 10.5, color: AppColors.textMuted),
+                      fontSize: 10.5,
+                      color: AppColors.textMuted,
+                    ),
                   ),
                 ),
               ],
             ],
+
+            // ---- Proof image ----
+            if (tx.proofImageUrl != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      T.of(context, 'proof_photo'),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: AspectRatio(
+                        aspectRatio: 16 / 10,
+                        child: Image.network(
+                          tx.proofImageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            color: AppColors.borderSoft,
+                            child: const Center(
+                              child: Icon(Icons.broken_image_outlined,
+                                  color: AppColors.textMuted),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
             const SizedBox(height: 12),
+
+            // ---- Chat + primary action ----
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    icon:
-                        const Icon(Icons.chat_bubble_outline_rounded, size: 16),
+                    icon: const Icon(Icons.chat_bubble_outline_rounded,
+                        size: 16),
                     label: Text(T.of(context, 'chat')),
                     onPressed: () =>
                         context.push('/messages/${tx.conversationId}'),
                   ),
                 ),
                 const SizedBox(width: 6),
-                Expanded(child: _buildPrimaryAction(iMustAccept, iProposed)),
+                Expanded(
+                  child: _buildPrimaryAction(iMustAccept, iProposed),
+                ),
               ],
             ),
+
             if (tx.status == 'completed') ...[
               const SizedBox(height: 8),
               OutlinedButton.icon(
@@ -549,23 +852,14 @@ class _DealCardState extends State<_DealCard> {
       );
     }
 
-    if (tx.proofImageUrl != null)
-      Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: AspectRatio(
-            aspectRatio: 16 / 10,
-            child: Image.network(tx.proofImageUrl!, fit: BoxFit.cover),
-          ),
-        ),
-      );
     if (tx.status == 'in_progress') {
       return FilledButton(
         onPressed: _busy ? null : _done,
         style: FilledButton.styleFrom(backgroundColor: AppColors.success),
-        child: Text(T.of(
-            context, tx.role == 'buyer' ? 'mark_received' : 'mark_delivered')),
+        child: Text(
+          T.of(context,
+              tx.role == 'buyer' ? 'mark_received' : 'mark_delivered'),
+        ),
       );
     }
 
@@ -605,50 +899,57 @@ class _DealCardState extends State<_DealCard> {
         return (
           label: T.of(context, 'awaiting_accept'),
           bg: AppColors.warning.withOpacity(0.12),
-          fg: AppColors.warning
+          fg: AppColors.warning,
         );
       case 'in_progress':
         return (
           label: T.of(context, 'in_progress'),
           bg: AppColors.info.withOpacity(0.12),
-          fg: AppColors.info
+          fg: AppColors.info,
         );
       case 'buyer_done':
         return (
           label: T.of(context, 'buyer_confirmed'),
           bg: AppColors.info.withOpacity(0.12),
-          fg: AppColors.info
+          fg: AppColors.info,
         );
       case 'pasabuyer_done':
         return (
           label: T.of(context, 'pasabuyer_confirmed'),
           bg: AppColors.info.withOpacity(0.12),
-          fg: AppColors.info
+          fg: AppColors.info,
         );
       case 'completed':
         return (
           label: T.of(context, 'completed'),
           bg: AppColors.success.withOpacity(0.12),
-          fg: AppColors.success
+          fg: AppColors.success,
         );
       case 'disputed':
         return (
           label: T.of(context, 'disputed'),
           bg: AppColors.danger.withOpacity(0.12),
-          fg: AppColors.danger
+          fg: AppColors.danger,
         );
       case 'cancelled':
         return (
           label: T.of(context, 'cancelled'),
           bg: AppColors.textMuted.withOpacity(0.12),
-          fg: AppColors.textMuted
+          fg: AppColors.textMuted,
         );
       default:
-        return (label: s, bg: AppColors.borderSoft, fg: AppColors.textMuted);
+        return (
+          label: s,
+          bg: AppColors.borderSoft,
+          fg: AppColors.textMuted,
+        );
     }
   }
 }
 
+// ===================================================================
+// Review dialog
+// ===================================================================
 class _ReviewDialog extends StatefulWidget {
   const _ReviewDialog();
   @override
@@ -669,7 +970,7 @@ class _ReviewDialogState extends State<_ReviewDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: Text(T.of(context, 'how_was_deal')),
+      title: Text(T.read(context, 'how_was_deal')),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -680,7 +981,9 @@ class _ReviewDialogState extends State<_ReviewDialog> {
               (i) => IconButton(
                 onPressed: () => setState(() => _rating = i + 1),
                 icon: Icon(
-                  i < _rating ? Icons.star_rounded : Icons.star_border_rounded,
+                  i < _rating
+                      ? Icons.star_rounded
+                      : Icons.star_border_rounded,
                   color: Colors.amber[600],
                   size: 32,
                 ),
@@ -693,7 +996,7 @@ class _ReviewDialogState extends State<_ReviewDialog> {
             maxLines: 3,
             maxLength: 300,
             decoration: InputDecoration(
-              hintText: T.of(context, 'optional_comment'),
+              hintText: T.read(context, 'optional_comment'),
             ),
           ),
         ],
@@ -701,20 +1004,23 @@ class _ReviewDialogState extends State<_ReviewDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: Text(T.of(context, 'cancel')),
+          child: Text(T.read(context, 'cancel')),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context, (
             rating: _rating,
             text: _text.text.trim().isEmpty ? null : _text.text.trim(),
           )),
-          child: Text(T.of(context, 'submit')),
+          child: Text(T.read(context, 'submit')),
         ),
       ],
     );
   }
 }
 
+// ===================================================================
+// Money row helper
+// ===================================================================
 class _MoneyRow extends StatelessWidget {
   final String label;
   final String value;

@@ -61,9 +61,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       },
                       child: Container(
                         padding: const EdgeInsets.all(16),
-                        color: n.read
-                            ? AppColors.surface
-                            : AppColors.primaryGhost,
+                        color:
+                            n.read ? AppColors.surface : AppColors.primaryGhost,
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -143,6 +142,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Icons.verified_rounded;
       case 'kyc_declined':
         return Icons.cancel_rounded;
+      case 'report_resolved':
+        return Icons.gavel_rounded;
+      case 'report_dismissed':
+        return Icons.info_outline_rounded;
       default:
         return Icons.notifications_rounded;
     }
@@ -160,6 +163,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return AppColors.success;
       case 'kyc_declined':
         return AppColors.danger;
+      case 'report_resolved':
+        return AppColors.success;
+      case 'report_dismissed':
+        return AppColors.info;
       default:
         return AppColors.textSecondary;
     }

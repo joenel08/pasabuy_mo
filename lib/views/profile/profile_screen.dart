@@ -75,15 +75,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-     appBar: AppBar(
-  title: Text(T.of(context, 'profile')),
-  actions: [
-    IconButton(
-      icon: const Icon(Icons.settings_outlined),
-      onPressed: () => context.push('/settings'),
-    ),
-  ],
-),
+      appBar: AppBar(
+        title: Text(T.of(context, 'profile')),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () => context.push('/settings'),
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         color: AppColors.primary,
         onRefresh: () async {
@@ -125,7 +125,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     : null,
                                 image: profile?.avatarUrl != null
                                     ? DecorationImage(
-                                        image: NetworkImage(profile!.avatarUrl!),
+                                        image:
+                                            NetworkImage(profile!.avatarUrl!),
                                         fit: BoxFit.cover,
                                       )
                                     : null,
@@ -254,6 +255,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: T.of(context, 'change_password'),
                     subtitle: T.of(context, 'change_password_sub'),
                     onTap: _openChangePassword,
+                  ),
+
+                  _ActionTile(
+                    icon: Icons.wallet_outlined,
+                    title: 'My fees',
+                    subtitle: 'View outstanding fees and payment history',
+                    onTap: () => context.push('/fees'),
                   ),
 
                   const SizedBox(height: 16),
@@ -411,7 +419,6 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
                   ),
                 ),
                 const SizedBox(height: 20),
-
                 TextFormField(
                   controller: _current,
                   obscureText: _obscureCurrent,
@@ -433,7 +440,6 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
                       : null,
                 ),
                 const SizedBox(height: 14),
-
                 TextFormField(
                   controller: _new,
                   obscureText: _obscureNew,
@@ -452,7 +458,8 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
                     ),
                   ),
                   validator: (v) {
-                    if (v == null || v.isEmpty) return 'New password is required';
+                    if (v == null || v.isEmpty)
+                      return 'New password is required';
                     if (v.length < 8) return 'At least 8 characters';
                     if (v == _current.text) {
                       return 'New password must be different';
@@ -461,7 +468,6 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
                   },
                 ),
                 const SizedBox(height: 14),
-
                 TextFormField(
                   controller: _confirm,
                   obscureText: _obscureConfirm,
@@ -485,7 +491,6 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
                   },
                 ),
                 const SizedBox(height: 24),
-
                 FilledButton(
                   onPressed: _submitting ? null : _submit,
                   child: _submitting

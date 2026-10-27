@@ -1,3 +1,5 @@
+import 'post_item.dart';
+
 class Post {
   final int id;
   final int ownerId;
@@ -8,12 +10,10 @@ class Post {
   final String? destinationLocation;
   final DateTime? travelDate;
   final String status;
-  final List<String> images;
+  final List<PostItem> items;
   final String ownerName;
-  final int? slots;
-  final int slotsTaken;
-  final bool isFavorite;
   final String? ownerAvatar;
+  final bool isFavorite;
 
   Post({
     required this.id,
@@ -25,40 +25,24 @@ class Post {
     this.destinationLocation,
     this.travelDate,
     required this.status,
-    this.images = const [],
+    this.items = const [],
     this.ownerName = '',
-    this.slots,
-    this.slotsTaken = 0,
-    this.isFavorite = false,
     this.ownerAvatar,
+    this.isFavorite = false,
   });
 
   bool get isClosed =>
       status == 'closed' || status == 'cancelled' || status == 'completed';
   bool get isOffer => type == 'offer';
-  bool get isFull => slots != null && slotsTaken >= slots!;
-  int? get slotsLeft => slots == null ? null : (slots! - slotsTaken);
 
-  Post copyWith({bool? isFavorite}) => Post(
-        id: id,
-        ownerId: ownerId,
-        type: type,
-        title: title,
-        description: description,
-        originLocation: originLocation,
-        destinationLocation: destinationLocation,
-        travelDate: travelDate,
-        status: status,
-        images: images,
-        ownerName: ownerName,
-        slots: slots,
-        slotsTaken: slotsTaken,
-        isFavorite: isFavorite ?? this.isFavorite,
-        ownerAvatar: ownerAvatar,
-      );
+  /// Aggregate first image across items (for feed thumbnail)
+  List<String> get images => items.expand((i) => i.images).toList();
+
+  /// Total items still accepting buyers
+  int get openItemCount => isClosed ? 0 : items.where((i) => !i.isFull).length;
 
   factory Post.fromJson(Map<String, dynamic> j) => Post(
-        id: j['id'] as int,
+        id: (j['id'] ?? 0) as int,
         ownerId: (j['owner_id'] ?? 0) as int,
         type: (j['type'] ?? 'offer').toString(),
         title: (j['title'] ?? '').toString(),
@@ -69,11 +53,13 @@ class Post {
             ? DateTime.tryParse(j['travel_date'].toString())
             : null,
         status: (j['status'] ?? 'open').toString(),
-        images: (j['images'] as List?)?.cast<String>() ?? const [],
+        items: (j['items'] as List?)
+                ?.whereType<Map>()
+                .map((m) => PostItem.fromJson(Map<String, dynamic>.from(m)))
+                .toList() ??
+            const [],
         ownerName: (j['owner_name'] ?? '').toString(),
-        slots: j['slots'] is int ? j['slots'] as int : null,
-        slotsTaken: (j['slots_taken'] ?? 0) as int,
-        isFavorite: j['is_favorite'] == true,
         ownerAvatar: j['owner_avatar'] as String?,
+        isFavorite: j['is_favorite'] == true,
       );
 }

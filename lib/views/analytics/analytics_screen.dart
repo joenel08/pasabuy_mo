@@ -15,6 +15,7 @@ class AnalyticsScreen extends StatefulWidget {
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Map<String, dynamic>? _data;
+  List<Map<String, dynamic>> _topItems = [];
   bool _loading = false;
   String _range = '30d';
 
@@ -35,9 +36,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final d = await context.read<TransactionService>().myTrend(range: _range);
+      final svc = context.read<TransactionService>();
+      final d = await svc.myTrend(range: _range);
+      final items = await svc.myItemsBreakdown(range: _range);
       if (!mounted) return;
-      setState(() => _data = d);
+      setState(() {
+        _data = d;
+        _topItems = items;
+      });
     } catch (e) {
       debugPrint('[ANALYTICS] $e');
     } finally {
@@ -80,6 +86,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       _ChartCard(data: _data!, title: _data!['label'] ?? ''),
                       const SizedBox(height: 12),
                       _ValueChartCard(data: _data!),
+                      if (_topItems.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        _TopItemsCard(items: _topItems),
+                      ],
                       const SizedBox(height: 32),
                     ],
                   ),
@@ -88,7 +98,151 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   }
 }
 
-// ---------------------------------------------------------------------------
+// ===================================================================
+// Top Items card — NEW
+// ===================================================================
+class _TopItemsCard extends StatelessWidget {
+  final List<Map<String, dynamic>> items;
+  const _TopItemsCard({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    final maxGmv = items
+        .map((i) => (i['gmv'] as num?)?.toDouble() ?? 0)
+        .fold<double>(0, (a, b) => a > b ? a : b);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 16, 14, 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Top items by GMV',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Completed deals, ranked by gross value',
+            style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 14),
+          ...items.take(10).toList().asMap().entries.map((e) {
+            final i = e.key;
+            final it = e.value;
+            final gmv = (it['gmv'] as num?)?.toDouble() ?? 0;
+            final ratio = maxGmv > 0 ? gmv / maxGmv : 0.0;
+            final deals = (it['deal_count'] as num?)?.toInt() ?? 0;
+
+            return Padding(
+              padding: EdgeInsets.only(bottom: i == items.take(10).length - 1 ? 0 : 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: i < 3
+                              ? AppColors.primary
+                              : AppColors.borderSoft,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Center(
+                          child: Text(
+                            '${i + 1}',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: i < 3
+                                  ? Colors.white
+                                  : AppColors.textMuted,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          (it['item_name'] ?? '').toString(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _shortMoney(gmv),
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  Row(
+                    children: [
+                      const SizedBox(width: 28),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(3),
+                          child: LinearProgressIndicator(
+                            value: ratio,
+                            minHeight: 4,
+                            backgroundColor: AppColors.borderSoft,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              i < 3
+                                  ? AppColors.primary
+                                  : AppColors.primary.withOpacity(0.4),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '$deals deal${deals == 1 ? '' : 's'}',
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  String _shortMoney(double v) {
+    if (v >= 1000000) return '₱${(v / 1000000).toStringAsFixed(1)}M';
+    if (v >= 1000) return '₱${(v / 1000).toStringAsFixed(1)}K';
+    return '₱${v.toStringAsFixed(0)}';
+  }
+}
+
+// ===================================================================
+// Existing helpers — unchanged below
+// ===================================================================
 
 class _RangePicker extends StatelessWidget {
   final List<String> ranges;
@@ -162,79 +316,88 @@ class _SummaryGrid extends StatelessWidget {
         Row(
           children: [
             Expanded(
-                child: _StatBox(
-              label: 'Total deals',
-              value: '$total',
-              sub: '$active active',
-              color: AppColors.textPrimary,
-            )),
+              child: _StatBox(
+                label: 'Total deals',
+                value: '$total',
+                sub: '$active active',
+                color: AppColors.textPrimary,
+              ),
+            ),
             const SizedBox(width: 8),
             Expanded(
-                child: _StatBox(
-              label: 'Success rate',
-              value: '$successRate%',
-              sub: '$completed completed',
-              color: AppColors.success,
-            )),
+              child: _StatBox(
+                label: 'Success rate',
+                value: '$successRate%',
+                sub: '$completed completed',
+                color: AppColors.success,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
-                child: _StatBox(
-              label: 'Total value',
-              value: _shortMoney(value),
-              sub: 'completed deals',
-              color: AppColors.primary,
-            )),
+              child: _StatBox(
+                label: 'Total value',
+                value: _shortMoney(value),
+                sub: 'completed deals',
+                color: AppColors.primary,
+              ),
+            ),
             const SizedBox(width: 8),
             Expanded(
-                child: _StatBox(
-              label: 'Avg completion',
-              value: _duration(avgH),
-              sub: 'on completed deals',
-              color: AppColors.info,
-            )),
+              child: _StatBox(
+                label: 'Avg completion',
+                value: _duration(avgH),
+                sub: 'on completed deals',
+                color: AppColors.info,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
-                child: _StatBox(
-              label: 'Cancelled',
-              value: '$cancelled',
-              sub: 'by either side',
-              color: AppColors.textMuted,
-            )),
+              child: _StatBox(
+                label: 'Cancelled',
+                value: '$cancelled',
+                sub: 'by either side',
+                color: AppColors.textMuted,
+              ),
+            ),
             const SizedBox(width: 8),
             Expanded(
-                child: _StatBox(
-              label: 'Disputed',
-              value: '$disputed',
-              sub: 'under review',
-              color: AppColors.danger,
-            )),
+              child: _StatBox(
+                label: 'Disputed',
+                value: '$disputed',
+                sub: 'under review',
+                color: AppColors.danger,
+              ),
+            ),
           ],
         ),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
-                child: _StatBox(
-              label: 'Admin fees paid',
-              value: _shortMoney((summary['fees_paid'] ?? 0).toDouble()),
-              sub: 'on completed deals',
-              color: AppColors.danger,
-            )),
+              child: _StatBox(
+                label: 'Admin fees paid',
+                value: _shortMoney((summary['fees_paid'] ?? 0).toDouble()),
+                sub: 'on completed deals',
+                color: AppColors.danger,
+              ),
+            ),
             const SizedBox(width: 8),
             Expanded(
-                child: _StatBox(
-              label: 'Net earned',
-              value: _shortMoney((summary['net_earned'] ?? 0).toDouble()),
-              sub: 'after 2% fee',
-              color: AppColors.success,
-            )),
+              child: _StatBox(
+                label: 'Net earned',
+                value: _shortMoney((summary['net_earned'] ?? 0).toDouble()),
+                sub: 'after 2% fee',
+                color: AppColors.success,
+              ),
+            ),
           ],
         ),
       ],
@@ -279,24 +442,28 @@ class _StatBox extends StatelessWidget {
         children: [
           Text(label,
               style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary)),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              )),
           const SizedBox(height: 6),
           Text(value,
               style: TextStyle(
-                  fontSize: 22, fontWeight: FontWeight.w800, color: color)),
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: color,
+              )),
           const SizedBox(height: 2),
           Text(sub,
-              style:
-                  const TextStyle(fontSize: 10.5, color: AppColors.textMuted)),
+              style: const TextStyle(
+                fontSize: 10.5,
+                color: AppColors.textMuted,
+              )),
         ],
       ),
     );
   }
 }
-
-// ---------------------------------------------------------------------------
 
 class _ChartCard extends StatelessWidget {
   final Map<String, dynamic> data;
@@ -320,7 +487,6 @@ class _ChartCard extends StatelessWidget {
       if (y > maxY) maxY = y;
     }
 
-    // Downsample labels: show at most ~6 labels
     final labelStep = (points.length / 6).ceil();
 
     return Container(
@@ -335,9 +501,10 @@ class _ChartCard extends StatelessWidget {
         children: [
           Text(title,
               style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary)),
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              )),
           const SizedBox(height: 4),
           const Text('Completed deals over time',
               style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
@@ -437,7 +604,6 @@ class _ChartCard extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
 class _ValueChartCard extends StatelessWidget {
   final Map<String, dynamic> data;
   const _ValueChartCard({required this.data});
@@ -488,9 +654,10 @@ class _ValueChartCard extends StatelessWidget {
         children: [
           const Text('Transacted value',
               style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary)),
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              )),
           const SizedBox(height: 4),
           const Text('Value of completed deals',
               style: TextStyle(fontSize: 11, color: AppColors.textMuted)),

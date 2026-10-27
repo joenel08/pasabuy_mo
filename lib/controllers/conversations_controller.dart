@@ -8,13 +8,19 @@ class ConversationsController extends ChangeNotifier {
 
   List<Conversation> items = [];
   bool loading = false;
+  void removeLocal(int conversationId) {
+    items = items.where((c) => c.id != conversationId).toList();
+    notifyListeners();
+  }
 
   Future<void> load() async {
-    loading = true; notifyListeners();
+    loading = true;
+    notifyListeners();
     try {
       items = await _service.list();
     } catch (_) {}
-    loading = false; notifyListeners();
+    loading = false;
+    notifyListeners();
   }
 
   Future<int> startWith(int postId) => _service.start(postId);

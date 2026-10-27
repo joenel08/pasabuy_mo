@@ -9,10 +9,10 @@ class ChatController extends ChangeNotifier {
   final int conversationId;
   ChatController(this._service, this.conversationId);
 
-  // ---- Exposed state ----
   List<Message> messages = [];
   String postTitle = '';
   String postType = 'offer';
+  String itemTitle = '';
   String otherEmail = '';
   String otherName = '';
   String? otherAvatar;
@@ -46,6 +46,7 @@ class ChatController extends ChangeNotifier {
 
       final changed = r.messages.length != messages.length ||
           postTitle != r.postTitle ||
+          itemTitle != r.itemTitle ||
           otherEmail != r.otherEmail ||
           otherName != r.otherName ||
           otherAvatar != r.otherAvatar ||
@@ -54,6 +55,7 @@ class ChatController extends ChangeNotifier {
       messages = r.messages;
       postTitle = r.postTitle;
       postType = r.postType;
+      itemTitle = r.itemTitle;
       otherEmail = r.otherEmail;
       otherName = r.otherName;
       otherAvatar = r.otherAvatar;

@@ -7,15 +7,14 @@ import 'package:share_plus/share_plus.dart';
 import '../../../controllers/auth_controller.dart';
 import '../../../controllers/feed_controller.dart';
 import '../../../core/api_client.dart';
+import '../../../core/constants.dart';
 import '../../../core/theme.dart';
 import '../../../core/translations.dart';
 import '../../../models/post.dart';
-import '../../../services/conversation_service.dart';
 import '../../../services/favorite_service.dart';
 import '../../../services/post_service.dart';
 import '../../common/report_sheet.dart';
-
-import '../../../core/constants.dart';
+import '../image_viewer_screen.dart';
 
 class PostCard extends StatelessWidget {
   final Post post;
@@ -39,7 +38,7 @@ class PostCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ---------- Header ----------
+          // Header
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 14, 8, 8),
             child: Row(
@@ -139,32 +138,6 @@ class PostCard extends StatelessWidget {
                                       WrapCrossAlignment.center,
                                   children: [
                                     _TypePill(isOffer: isOffer),
-                                    if (post.slots != null)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: post.isFull
-                                              ? AppColors.danger
-                                                  .withOpacity(0.12)
-                                              : AppColors.info
-                                                  .withOpacity(0.12),
-                                          borderRadius:
-                                              BorderRadius.circular(6),
-                                        ),
-                                        child: Text(
-                                          post.isFull
-                                              ? T.of(context, 'full')
-                                              : '${post.slotsLeft} ${T.of(context, 'left')}',
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w700,
-                                            color: post.isFull
-                                                ? AppColors.danger
-                                                : AppColors.info,
-                                          ),
-                                        ),
-                                      ),
                                     Text(
                                       post.travelDate != null
                                           ? D.short(context, post.travelDate!)
@@ -199,7 +172,7 @@ class PostCard extends StatelessWidget {
             ),
           ),
 
-          // ---------- Body ----------
+          // Body
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
             child: Column(
@@ -217,7 +190,7 @@ class PostCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   post.description,
-                  maxLines: 3,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 13.5,
@@ -225,53 +198,52 @@ class PostCard extends StatelessWidget {
                     height: 1.5,
                   ),
                 ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.primarySoft,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.inventory_2_outlined,
+                              size: 12, color: AppColors.primary),
+                          const SizedBox(width: 5),
+                          Text(
+                            '${post.items.length} '
+                            'item${post.items.length == 1 ? '' : 's'}'
+                            ' · ${post.openItemCount} available',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
 
-          // ---------- Image ----------
+          // Image grid — opens the full-screen viewer at the tapped index
           if (post.images.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: AspectRatio(
-                  aspectRatio: 16 / 10,
-                  child: Image.network(
-                    post.images.first,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (_, child, progress) {
-                      if (progress == null) return child;
-                      return Container(
-                        color: AppColors.borderSoft,
-                        child: const Center(
-                          child: CircularProgressIndicator(
-                            color: AppColors.primary,
-                            strokeWidth: 2,
-                          ),
-                        ),
-                      );
-                    },
-                    errorBuilder: (_, err, __) {
-                      debugPrint(
-                          '[POST IMG] failed: ${post.images.first} → $err');
-                      return Container(
-                        color: AppColors.borderSoft,
-                        child: const Center(
-                          child: Icon(
-                            Icons.broken_image_outlined,
-                            color: AppColors.textMuted,
-                            size: 32,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
+              child: _ImageGrid(
+                images: post.images,
+                onImageTap: (index) => _openImage(context, index),
               ),
             ),
 
-          // ---------- Route pill ----------
+          // Route pill
           if (post.originLocation != null || post.destinationLocation != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
@@ -319,7 +291,7 @@ class PostCard extends StatelessWidget {
               ),
             ),
 
-          // ---------- Actions ----------
+          // Actions
           const Divider(height: 1),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
@@ -330,6 +302,39 @@ class PostCard extends StatelessWidget {
     );
   }
 
+  // ---- Tapping any image opens the viewer at that index ----
+ /// Opens the viewer scoped to the item that owns the tapped image.
+void _openImage(BuildContext context, int globalIndex) {
+  // Walk through the items to find which one owns `globalIndex`
+  int running = 0;
+  for (final item in post.items) {
+    if (item.images.isEmpty) continue;
+    if (globalIndex < running + item.images.length) {
+      final localIndex = globalIndex - running;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ImageViewerScreen(
+            post: post,
+            item: item,
+            initialIndex: localIndex,
+          ),
+        ),
+      );
+      return;
+    }
+    running += item.images.length;
+  }
+
+  // Fallback: image didn't map to any item — open with all images
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => ImageViewerScreen(
+        post: post,
+        initialIndex: globalIndex,
+      ),
+    ),
+  );
+}
   void _openProfile(BuildContext context, {required bool isOwner}) {
     if (isOwner) {
       context.push('/profile');
@@ -338,9 +343,11 @@ class PostCard extends StatelessWidget {
     }
   }
 
-  Widget _buildActions(BuildContext context,
-      {required bool isOwner, required bool closed}) {
-    // NOTE: this runs during build(), so `T.of` (watch) is safe here.
+  Widget _buildActions(
+    BuildContext context, {
+    required bool isOwner,
+    required bool closed,
+  }) {
     if (isOwner) {
       return Row(
         children: [
@@ -356,7 +363,7 @@ class PostCard extends StatelessWidget {
             icon: Icons.visibility_outlined,
             label: T.of(context, 'view'),
             color: AppColors.textSecondary,
-            onTap: () => _showDetails(context),
+            onTap: () => context.push('/post/detail', extra: post),
           ),
           if (!closed)
             _PostAction(
@@ -379,18 +386,18 @@ class PostCard extends StatelessWidget {
     return Row(
       children: [
         _PostAction(
+          icon: Icons.visibility_outlined,
+          label: T.of(context, 'view'),
+          color: closed ? AppColors.textMuted : AppColors.primary,
+          onTap: () => context.push('/post/detail', extra: post),
+        ),
+        _PostAction(
           icon: Icons.chat_bubble_outline_rounded,
           label: T.of(context, 'message'),
           color: closed ? AppColors.textMuted : AppColors.primary,
           onTap: closed
               ? () => _toast(context, T.read(context, 'already_closed_toast'))
-              : () => _openChat(context),
-        ),
-        _PostAction(
-          icon: Icons.visibility_outlined,
-          label: T.of(context, 'view'),
-          color: AppColors.textSecondary,
-          onTap: () => _showDetails(context),
+              : () => context.push('/post/detail', extra: post),
         ),
         _PostAction(
           icon: post.isFavorite
@@ -466,7 +473,6 @@ class PostCard extends StatelessWidget {
                     await _toggleSave(context);
                   },
                 ),
-              // The only remaining share-ish action.
               _MenuTile(
                 icon: Icons.share_outlined,
                 label: T.read(context, 'share'),
@@ -521,77 +527,7 @@ class PostCard extends StatelessWidget {
     );
   }
 
-  Future<void> _openChat(BuildContext context) async {
-    try {
-      final svc = context.read<ConversationService>();
-      final id = await svc.start(post.id);
-      if (!context.mounted) return;
-      context.push('/messages/$id');
-    } catch (e) {
-      if (!context.mounted) return;
-      final msg = e is DioException
-          ? context.read<ApiClient>().prettyError(e)
-          : T.read(context, 'could_not_open_chat');
-      _toast(context, msg, error: true);
-    }
-  }
-
-  void _showDetails(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppColors.border,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                _TypePill(isOffer: post.type == 'offer'),
-                const SizedBox(height: 12),
-                Text(post.title,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
-                    )),
-                const SizedBox(height: 8),
-                Text(post.description,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: AppColors.textSecondary,
-                      height: 1.5,
-                    )),
-                const SizedBox(height: 20),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Opens the OS share sheet (WhatsApp, Messenger, SMS, Copy to clipboard…)
   void _share(BuildContext context) {
-    final downloadUrl = AppConstants.appDownloadUrl;
     final text = '''
 ${post.title}
 
@@ -602,7 +538,7 @@ ${post.travelDate != null ? D.readLong(context, post.travelDate!) : ''}
 ${T.read(context, 'posted_by')} ${post.ownerName}
 
 ${T.read(context, 'via_pasabuy')}
-${T.read(context, 'download_app')}: $downloadUrl
+${T.read(context, 'download_app')}: ${AppConstants.appDownloadUrl}
 '''.trim();
 
     Share.share(text, subject: post.title);
@@ -697,7 +633,175 @@ ${T.read(context, 'download_app')}: $downloadUrl
   }
 }
 
-// ---------------------------------------------------------------------------
+// =====================================================================
+// Image grid — taps call `onImageTap(index)` so the parent knows which
+// tile was hit and can open the viewer at that exact position.
+// =====================================================================
+
+class _ImageGrid extends StatelessWidget {
+  final List<String> images;
+  final void Function(int index) onImageTap;
+
+  const _ImageGrid({required this.images, required this.onImageTap});
+
+  @override
+  Widget build(BuildContext context) {
+    if (images.isEmpty) return const SizedBox.shrink();
+
+    // 1 image
+    if (images.length == 1) {
+      return AspectRatio(
+        aspectRatio: 16 / 10,
+        child: _tile(0),
+      );
+    }
+
+    // 2 images
+    if (images.length == 2) {
+      return AspectRatio(
+        aspectRatio: 2 / 1,
+        child: Row(
+          children: [
+            Expanded(child: _tile(0)),
+            const SizedBox(width: 2),
+            Expanded(child: _tile(1)),
+          ],
+        ),
+      );
+    }
+
+    // 3 images
+    if (images.length == 3) {
+      return AspectRatio(
+        aspectRatio: 1,
+        child: Row(
+          children: [
+            Expanded(child: _tile(0)),
+            const SizedBox(width: 2),
+            Expanded(
+              child: Column(
+                children: [
+                  Expanded(child: _tile(1)),
+                  const SizedBox(height: 2),
+                  Expanded(child: _tile(2)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 4+ images
+    final extra = images.length - 4;
+    return AspectRatio(
+      aspectRatio: 1,
+      child: Column(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(child: _tile(0)),
+                const SizedBox(width: 2),
+                Expanded(child: _tile(1)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 2),
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(child: _tile(2)),
+                const SizedBox(width: 2),
+                Expanded(
+                  child: extra > 0
+                      ? _tileWithOverlay(3, '+$extra')
+                      : _tile(3),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tile(int index) {
+    return GestureDetector(
+      onTap: () => onImageTap(index),
+      behavior: HitTestBehavior.opaque,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
+          images[index],
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          loadingBuilder: (_, child, progress) {
+            if (progress == null) return child;
+            return Container(
+              color: AppColors.borderSoft,
+              child: const Center(
+                child: CircularProgressIndicator(
+                  color: AppColors.primary,
+                  strokeWidth: 2,
+                ),
+              ),
+            );
+          },
+          errorBuilder: (_, __, ___) => Container(
+            color: AppColors.borderSoft,
+            child: const Center(
+              child: Icon(Icons.broken_image_outlined,
+                  color: AppColors.textMuted, size: 24),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tileWithOverlay(int index, String label) {
+    return GestureDetector(
+      onTap: () => onImageTap(index),
+      behavior: HitTestBehavior.opaque,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.network(
+              images[index],
+              fit: BoxFit.cover,
+              loadingBuilder: (_, child, progress) {
+                if (progress == null) return child;
+                return Container(color: AppColors.borderSoft);
+              },
+              errorBuilder: (_, __, ___) =>
+                  Container(color: AppColors.borderSoft),
+            ),
+            Container(
+              color: Colors.black.withOpacity(0.55),
+              alignment: Alignment.center,
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =====================================================================
+// Small widgets
+// =====================================================================
 
 class _TypePill extends StatelessWidget {
   final bool isOffer;

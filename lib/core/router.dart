@@ -25,6 +25,8 @@ import '../views/post/edit_post_screen.dart';
 import '../views/favorites/favorites_screen.dart';
 import '../models/post.dart';
 import '../views/report/report_target_screen.dart';
+import '../views/post/post_detail_screen.dart';
+import '../views/deals/my_fees_screen.dart';
 
 class AppRouter {
   static late GoRouter router;
@@ -150,6 +152,14 @@ GoRouter buildRouter(AuthController auth) {
       GoRoute(
         path: '/profile/edit',
         builder: (_, __) => const ProfileStep1Screen(editMode: true),
+      ),
+      GoRoute(
+        path: '/post/detail',
+        builder: (_, s) => PostDetailScreen(post: s.extra as Post),
+      ),
+      GoRoute(
+        path: '/fees',
+        builder: (_, __) => const MyFeesScreen(),
       ),
     ],
   );

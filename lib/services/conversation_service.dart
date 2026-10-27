@@ -19,20 +19,23 @@ class ConversationService {
         .toList();
   }
 
-  Future<int> start(int postId) async {
-    final res = await _api.dio.post('/conversations', data: {'post_id': postId});
+  Future<int> start(int itemId) async {
+    final res =
+        await _api.dio.post('/conversations', data: {'item_id': itemId});
     return res.data['data']['conversation_id'] as int;
   }
 
-  Future<({
-    List<Message> messages,
-    String postTitle,
-    String postType,
-    String otherEmail,
-    String otherName,
-    String? otherAvatar,
-    int? otherId,
-  })> messages(int conversationId) async {
+  Future<
+      ({
+        List<Message> messages,
+        String postTitle,
+        String postType,
+        String itemTitle,
+        String otherEmail,
+        String otherName,
+        String? otherAvatar,
+        int? otherId,
+      })> messages(int conversationId) async {
     final res = await _api.dio.get('/conversations/$conversationId/messages');
 
     final envelope = res.data;
@@ -41,19 +44,20 @@ class ConversationService {
         messages: <Message>[],
         postTitle: '',
         postType: 'offer',
+        itemTitle: '',
         otherEmail: '',
         otherName: '',
         otherAvatar: null,
         otherId: null,
       );
     }
-
     final inner = envelope['data'];
     if (inner is! Map) {
       return (
         messages: <Message>[],
         postTitle: '',
         postType: 'offer',
+        itemTitle: '',
         otherEmail: '',
         otherName: '',
         otherAvatar: null,
@@ -73,6 +77,7 @@ class ConversationService {
       messages: items,
       postTitle: (inner['post_title'] ?? '').toString(),
       postType: (inner['post_type'] ?? 'offer').toString(),
+      itemTitle: (inner['item_title'] ?? '').toString(),
       otherEmail: (inner['other_party_email'] ?? '').toString(),
       otherName: (inner['other_party_name'] ?? '').toString(),
       otherAvatar: inner['other_party_avatar'] as String?,
@@ -115,5 +120,17 @@ class ConversationService {
       mine: true,
       createdAt: DateTime.now(),
     );
+  }
+
+  Future<void> pin(int conversationId) async {
+    await _api.dio.post('/conversations/$conversationId/pin');
+  }
+
+  Future<void> unpin(int conversationId) async {
+    await _api.dio.post('/conversations/$conversationId/unpin');
+  }
+
+  Future<void> delete(int conversationId) async {
+    await _api.dio.delete('/conversations/$conversationId');
   }
 }

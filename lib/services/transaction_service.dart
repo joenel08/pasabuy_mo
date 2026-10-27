@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import '../core/api_client.dart';
 import '../models/transaction.dart';
+import '../models/fees_summary.dart';
 
 class TransactionService {
   final ApiClient _api;
@@ -85,5 +86,32 @@ class TransactionService {
     final inner = envelope['data'];
     if (inner is! Map) return const {};
     return Map<String, dynamic>.from(inner);
+  }
+
+  Future<List<Map<String, dynamic>>> myItemsBreakdown(
+      {String range = 'all'}) async {
+    final res = await _api.dio.get(
+      '/me/stats/by-item',
+      queryParameters: {'range': range},
+    );
+    final envelope = res.data;
+    if (envelope is! Map) return const [];
+    final inner = envelope['data'];
+    if (inner is! Map) return const [];
+    final list = inner['data'];
+    if (list is! List) return const [];
+    return list
+        .whereType<Map>()
+        .map((m) => Map<String, dynamic>.from(m))
+        .toList();
+  }
+
+  Future<FeesData> myFees() async {
+    final res = await _api.dio.get('/me/fees');
+    final envelope = res.data;
+    if (envelope is! Map) throw Exception('Unexpected response');
+    final inner = envelope['data'];
+    if (inner is! Map) throw Exception('Unexpected response');
+    return FeesData.fromJson(Map<String, dynamic>.from(inner));
   }
 }

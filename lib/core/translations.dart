@@ -191,7 +191,7 @@ class T {
       'no_deals_yet': 'No deals yet',
       'no_deals_sub': 'Deals you start from a chat will appear here.',
       'as_buyer': 'As buyer',
-      'as_pasabuyer': 'As pasabuyer',
+      'as_pasabuyer': 'As Shopper',
       'active': 'active',
       'deal_accepted': 'Deal accepted',
       'cancel_deal_title': 'Cancel this deal?',
@@ -204,7 +204,7 @@ class T {
       'keep_deal': 'Keep deal',
       'cancel_deal': 'Cancel deal',
       'you_are_buying': 'You are buying',
-      'you_are_pasabuyer': 'You are pasabuyer',
+      'you_are_pasabuyer': 'You are Shopper',
       'waiting_for_accept': 'Waiting for accept',
       'waiting': 'Waiting',
       'waiting_for_them': 'Waiting for them',
@@ -217,7 +217,7 @@ class T {
       'with_user': 'with',
       // Messages placeholder
       'no_messages_yet': 'No messages yet',
-      'no_messages_sub': 'Chat with buyers and pasabuyers will appear here.',
+      'no_messages_sub': 'Chat with requester and shopper will appear here.',
 
       // Chat / conversation
       'chat_title': 'Chat',
@@ -271,6 +271,30 @@ class T {
       'you_pay': 'Total you pay',
 
       'download_app': 'Download the App',
+
+      'item_name_required': 'Item name is required',
+
+      'all_tab': 'All',
+      'pending_tab': 'Pending',
+      'in_progress_tab': 'In Progress',
+      'finishing_tab': 'Finishing',
+      'completed_tab': 'Completed',
+      'cancelled_tab': 'Cancelled',
+      'no_deals_in_tab': 'No deals in this category',
+      'no_deals_in_tab_sub': 'Switch to another tab to see more.',
+      'proof_photo': 'Proof photo',
+
+      'delete_conversation_title': 'Delete conversation?',
+      'delete_conversation_body':
+          'This removes the chat from your list. The other party keeps their copy.',
+      'pinned_to_top': 'Pinned to top',
+      'unpinned': 'Unpinned',
+      'pin': 'Pin to top',
+      'unpin': 'Unpin',
+      'could_not_delete_conversation': 'Could not delete conversation',
+      'could_not_pin': 'Could not pin',
+
+      //  filipino
     },
     'fil': {
       // Nav
@@ -459,7 +483,7 @@ class T {
       'no_deals_yet': 'Wala pang deal',
       'no_deals_sub': 'Ang mga deal na sisimulan mo sa chat ay lalabas dito.',
       'as_buyer': 'Bilang buyer',
-      'as_pasabuyer': 'Bilang pasabuyer',
+      'as_pasabuyer': 'Bilang Mamimili',
       'active': 'aktibo',
       'deal_accepted': 'Tinanggap ang deal',
       'cancel_deal_title': 'Kanselahin ang deal na ito?',
@@ -473,20 +497,21 @@ class T {
       'keep_deal': 'Ituloy ang deal',
       'cancel_deal': 'Kanselahin ang deal',
       'you_are_buying': 'Bumibili ka',
-      'you_are_pasabuyer': 'Pasabuyer ka',
+      'you_are_pasabuyer': 'Mamimili ka',
       'waiting_for_accept': 'Hinihintay ang sagot',
       'waiting': 'Naghihintay',
       'waiting_for_them': 'Hinihintay sila',
       'waiting_for_you': 'Hinihintay ka',
       'buyer_confirmed': 'Kinumpirma ng buyer',
-      'pasabuyer_confirmed': 'Kinumpirma ng pasabuyer',
+      'pasabuyer_confirmed': 'Kinumpirma ng Mamimili',
       'disputed': 'May dispute',
       'how_was_deal': 'Kumusta ang deal na ito?',
       'optional_comment': 'Opsyonal na komento…',
       'with_user': 'kasama si',
       // Messages placeholder
       'no_messages_yet': 'Wala pang mensahe',
-      'no_messages_sub': 'Dito lalabas ang mga chat sa mga buyer at pasabuyer.',
+      'no_messages_sub':
+          'Dito lalabas ang mga chat sa mga Humihiling at Mamimili.',
 
       // Chat / conversation
       'chat_title': 'Chat',
@@ -534,9 +559,6 @@ class T {
       'no_saved_posts_sub':
           'Pindutin ang "I-save" sa kahit anong pasabuy para ma-bookmark dito.',
 
-      // EN
-
-// FIL
       'admin_fee': 'Bayad sa admin',
       'net_payout': 'Netong kita',
       'fee_disclaimer':
@@ -544,7 +566,33 @@ class T {
       'you_earn': 'Kita mo',
       'you_pay': 'Babayaran mo',
 
-            'download_app': 'I-download ang app',
+      'download_app': 'I-download ang app',
+
+      'item_name_required': 'Kailangan ang pangalan ng item',
+
+// Filipino
+      'all_tab': 'Lahat',
+      'pending_tab': 'Nakabinbin',
+      'in_progress_tab': 'Isinasagawa',
+      'finishing_tab': 'Tinatapos',
+      'completed_tab': 'Tapos',
+      'cancelled_tab': 'Kinansela',
+      'no_deals_in_tab': 'Walang deal sa kategoryang ito',
+      'no_deals_in_tab_sub': 'Lumipat sa ibang tab para sa iba pa.',
+      'proof_photo': 'Litrato ng patunay',
+
+// EN
+
+// FIL
+      'delete_conversation_title': 'Burahin ang usapan?',
+      'delete_conversation_body':
+          'Aalisin ito sa iyong listahan. Ang kausap mo ay may sariling kopya.',
+      'pinned_to_top': 'Naka-pin sa itaas',
+      'unpinned': 'Hindi na naka-pin',
+      'pin': 'I-pin sa itaas',
+      'unpin': 'Alisin sa pin',
+      'could_not_delete_conversation': 'Hindi mabura ang usapan',
+      'could_not_pin': 'Hindi ma-pin',
     },
   };
 
@@ -592,8 +640,7 @@ class D {
     return DateFormat.Hm(locale).format(d.toLocal());
   }
 
-
-    /// Like [long], but safe to call from callbacks (no `context.watch`).
+  /// Like [long], but safe to call from callbacks (no `context.watch`).
   static String readShort(BuildContext context, DateTime d) {
     final code = context.read<LanguageController>().code;
     final locale = code == 'fil' ? 'fil_PH' : 'en_PH';
