@@ -10,6 +10,9 @@ import '../../services/profile_service.dart';
 import '../../services/report_service.dart';
 import '../../services/review_service.dart';
 
+import '../../core/api_client.dart';
+import '../../models/post.dart';
+
 class PublicProfileScreen extends StatefulWidget {
   final int userId;
   const PublicProfileScreen({super.key, required this.userId});
@@ -27,7 +30,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
   bool _loading = true;
   bool _canReview = false;
   int? _reviewTransactionId;
-  String _reviewMessage = '';
   Map<int, int> _ratingDistribution = {5: 0, 4: 0, 3: 0, 2: 0, 1: 0};
 
   @override
@@ -43,6 +45,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() => _loading = true);
     try {
       final p =
@@ -89,7 +92,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
     final reason = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (_) => _ReportSheet(),
+      builder: (_) => const _ReportSheet(),
     );
     if (reason == null || !mounted) return;
     try {
@@ -133,7 +136,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
           backgroundColor: AppColors.success,
         ),
       );
-      _load();
+      await _load();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -201,7 +204,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
         (name == null || name.isEmpty) ? d['email'] as String : name;
     final email = d['email'] as String? ?? '';
     final location = d['location'] as String? ?? '';
-    final avatarUrl = d['avatar_url'] as String?;
+    final rawAvatar = (d['avatar_url'] as String?)?.trim();
+    final avatarUrl =
+        (rawAvatar == null || rawAvatar.isEmpty) ? null : rawAvatar;
     final kyc = d['kyc_status'] as String? ?? 'none';
     final kycType = d['kyc_type'] as String?;
     final reviewed = d['kyc_reviewed_at'] as String?;
@@ -315,12 +320,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
           ),
         ),
 
-        // Rating summary
-        // if (_avgRating != null) ...[
-        //   const SizedBox(height: 12),
-        //   _RatingSummary(avg: _avgRating!, total: _totalReviews),
-        // ],
-
         // Stats
         const SizedBox(height: 12),
         Row(
@@ -420,7 +419,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
                       ),
                       TextSpan(
                         text: isVerified
-                            ? 'This user submitted a government-issued $kycType and was verified by our admin team.'
+                            ? 'This user submitted a government-issued ${_prettyIdType(kycType)} and was verified by our admin team.'
                             : 'This user has not completed ID verification yet. Trade with caution.',
                         style: const TextStyle(color: AppColors.textSecondary),
                       ),
@@ -438,6 +437,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
   // ---------------- Posts tab ----------------
   Widget _buildPosts() {
     final posts = (_data!['recent_posts'] as List?) ?? [];
+
     if (posts.isEmpty) {
       return const Center(
         child: Padding(
@@ -447,59 +447,209 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
         ),
       );
     }
-    return GridView.builder(
+
+    return ListView.separated(
       padding: const EdgeInsets.all(12),
       itemCount: posts.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-        childAspectRatio: 0.85,
-      ),
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (_, i) {
         final p = posts[i] as Map;
-        final img = p['image'] as String?;
+        final items = (p['items'] as List?)?.whereType<Map>().toList() ?? [];
+
+        // Collect ALL images across all items for the grid
+        final allImages = <String>[];
+        for (final it in items) {
+          final imgs = (it['images'] as List?)?.cast<String>() ?? [];
+          allImages.addAll(imgs);
+        }
+
         return InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () {},
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => _openPost(p),
           child: Container(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.border),
               color: AppColors.surface,
-              image: img != null
-                  ? DecorationImage(image: NetworkImage(img), fit: BoxFit.cover)
-                  : null,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.border),
             ),
-            child: img == null
-                ? Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          (p['title'] ?? '').toString(),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Image grid (Facebook style)
+                if (allImages.isNotEmpty)
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(14),
+                    ),
+                    child: _MiniImageGrid(images: allImages),
+                  ),
+
+                // Header
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: p['type'] == 'offer'
+                              ? AppColors.primarySoft
+                              : AppColors.accentSoft,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          p['type'] == 'offer' ? 'Offer' : 'Request',
+                          style: TextStyle(
+                            fontSize: 10,
                             fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                            color: AppColors.textPrimary,
+                            color: p['type'] == 'offer'
+                                ? AppColors.primary
+                                : AppColors.accent,
                           ),
                         ),
-                        const Spacer(),
-                        Text(
-                          (p['status'] ?? '').toString(),
-                          style: const TextStyle(
-                              fontSize: 11, color: AppColors.textMuted),
+                      ),
+                      const SizedBox(width: 6),
+                      _miniStatusPill(
+                        p['status']?.toString() ?? 'open',
+                        expired: p['travel_date'] != null &&
+                            DateTime.parse(p['travel_date'].toString())
+                                .isBefore(DateTime.now()
+                                    .add(const Duration(days: 1))),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${items.length} item${items.length == 1 ? '' : 's'}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Title + description
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        (p['title'] ?? '').toString(),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      if (p['origin_location'] != null ||
+                          p['destination_location'] != null) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            const Icon(Icons.place_outlined,
+                                size: 12, color: AppColors.textMuted),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                '${p['origin_location'] ?? '—'} → ${p['destination_location'] ?? '—'}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
-                    ),
-                  )
-                : null,
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },
+    );
+  }
+
+  /// Opens the post detail screen for the tapped post
+  Future<void> _openPost(Map p) async {
+    // Fetch full post from API to get fresh item data
+    try {
+      final res = await context.read<ApiClient>().dio.get('/posts/${p['id']}');
+      final data = res.data['data'];
+      if (!mounted) return;
+      if (data is Map) {
+        context.push('/post/detail',
+            extra: Post.fromJson(
+              Map<String, dynamic>.from(data),
+            ));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open post'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not open post'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    }
+  }
+
+  /// Small status pill for the mini-grid
+  Widget _miniStatusPill(String status, {bool expired = false}) {
+    if (expired) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: AppColors.textMuted.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: const Text(
+          'Expired',
+          style: TextStyle(
+            fontSize: 9.5,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textMuted,
+          ),
+        ),
+      );
+    }
+
+    final map = {
+      'open': (AppColors.success, 'Open'),
+      'matched': (AppColors.info, 'Matched'),
+      'completed': (AppColors.textMuted, 'Completed'),
+      'closed': (AppColors.textMuted, 'Closed'),
+    };
+    final (color, label) = map[status] ?? (AppColors.textMuted, status);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 9.5,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
+      ),
     );
   }
 
@@ -568,7 +718,178 @@ class _PublicProfileScreenState extends State<PublicProfileScreen>
   }
 }
 
-// ==================== Helpers ====================
+// ==================== Shared helpers ====================
+
+/// Converts an internal kyc_type key into a human-readable label.
+String _prettyIdType(String? t) {
+  switch (t) {
+    case 'philsys':
+      return 'PhilSys National ID';
+    case 'passport':
+      return 'Passport';
+    case 'drivers_license':
+      return "Driver's License";
+    case 'umid':
+      return 'UMID';
+    case 'sss':
+      return 'SSS ID';
+    case 'prc':
+      return 'PRC ID';
+    case 'voters':
+      return "Voter's ID";
+    case 'postal':
+      return 'Postal ID';
+    case 'senior':
+      return 'Senior Citizen ID';
+    default:
+      return 'ID';
+  }
+}
+
+/// Masks an email for privacy: `jane.doe@x.com` -> `j***@x.com`.
+String _maskEmail(String email) {
+  final at = email.indexOf('@');
+  if (at <= 0) return email;
+  final local = email.substring(0, at);
+  final domain = email.substring(at);
+  final first = local[0];
+  return '$first***$domain';
+}
+
+// ==================== Mini Image Grid ====================
+
+class _MiniImageGrid extends StatelessWidget {
+  final List<String> images;
+  const _MiniImageGrid({required this.images});
+
+  @override
+  Widget build(BuildContext context) {
+    if (images.isEmpty) return const SizedBox.shrink();
+
+    if (images.length == 1) {
+      return AspectRatio(
+        aspectRatio: 16 / 10,
+        child: _tile(images[0]),
+      );
+    }
+    if (images.length == 2) {
+      return AspectRatio(
+        aspectRatio: 2 / 1,
+        child: Row(
+          children: [
+            Expanded(child: _tile(images[0])),
+            const SizedBox(width: 2),
+            Expanded(child: _tile(images[1])),
+          ],
+        ),
+      );
+    }
+    if (images.length == 3) {
+      return AspectRatio(
+        aspectRatio: 1,
+        child: Row(
+          children: [
+            Expanded(child: _tile(images[0])),
+            const SizedBox(width: 2),
+            Expanded(
+              child: Column(
+                children: [
+                  Expanded(child: _tile(images[1])),
+                  const SizedBox(height: 2),
+                  Expanded(child: _tile(images[2])),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final extra = images.length - 4;
+    return AspectRatio(
+      aspectRatio: 1,
+      child: Column(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(child: _tile(images[0])),
+                const SizedBox(width: 2),
+                Expanded(child: _tile(images[1])),
+              ],
+            ),
+          ),
+          const SizedBox(height: 2),
+          Expanded(
+            child: Row(
+              children: [
+                Expanded(child: _tile(images[2])),
+                const SizedBox(width: 2),
+                Expanded(
+                  child: extra > 0
+                      ? _tileWithOverlay(images[3], '+$extra')
+                      : _tile(images[3]),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tile(String url) {
+    return Image.network(
+      url,
+      key: ValueKey(url),
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      loadingBuilder: (_, child, progress) {
+        if (progress == null) return child;
+        return Container(
+          color: AppColors.borderSoft,
+          child: const Center(
+            child: CircularProgressIndicator(
+              color: AppColors.primary,
+              strokeWidth: 2,
+            ),
+          ),
+        );
+      },
+      errorBuilder: (_, __, ___) => Container(
+        color: AppColors.borderSoft,
+        child: const Center(
+          child: Icon(Icons.broken_image_outlined,
+              color: AppColors.textMuted, size: 20),
+        ),
+      ),
+    );
+  }
+
+  Widget _tileWithOverlay(String url, String label) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _tile(url),
+        Container(
+          color: Colors.black54,
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ==================== Dialogs / Sheets ====================
 
 class _ReviewDialog extends StatefulWidget {
   const _ReviewDialog();
@@ -635,6 +956,7 @@ class _ReviewDialogState extends State<_ReviewDialog> {
 }
 
 class _ReportSheet extends StatefulWidget {
+  const _ReportSheet();
   @override
   State<_ReportSheet> createState() => _ReportSheetState();
 }
@@ -703,6 +1025,8 @@ class _ReportSheetState extends State<_ReportSheet> {
   }
 }
 
+// ==================== KYC Badge ====================
+
 class _KycBadge extends StatelessWidget {
   final String status;
   final String? idType;
@@ -750,7 +1074,7 @@ class _KycBadge extends StatelessWidget {
         if (status == 'accepted' && idType != null) ...[
           const SizedBox(height: 8),
           Text(
-            'Submitted a ${_pretty(idType!)}'
+            'Submitted a ${_prettyIdType(idType)}'
             '${reviewedAt != null ? ' · ' + DateFormat.yMMMd().format(DateTime.tryParse(reviewedAt!) ?? DateTime.now()) : ''}',
             style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
             textAlign: TextAlign.center,
@@ -758,31 +1082,6 @@ class _KycBadge extends StatelessWidget {
         ],
       ],
     );
-  }
-
-  String _pretty(String t) {
-    switch (t) {
-      case 'philsys':
-        return 'PhilSys National ID';
-      case 'passport':
-        return 'Passport';
-      case 'drivers_license':
-        return "Driver's License";
-      case 'umid':
-        return 'UMID';
-      case 'sss':
-        return 'SSS ID';
-      case 'prc':
-        return 'PRC ID';
-      case 'voters':
-        return "Voter's ID";
-      case 'postal':
-        return 'Postal ID';
-      case 'senior':
-        return 'Senior Citizen ID';
-      default:
-        return 'government-issued ID';
-    }
   }
 }
 
@@ -961,6 +1260,9 @@ class _ReviewCard extends StatelessWidget {
     final initial = review.reviewerEmail.isNotEmpty
         ? review.reviewerEmail[0].toUpperCase()
         : '?';
+    final displayName = review.reviewerEmail.isNotEmpty
+        ? _maskEmail(review.reviewerEmail)
+        : 'Anonymous';
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -1000,7 +1302,7 @@ class _ReviewCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      review.reviewerEmail,
+                      displayName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -1051,69 +1353,7 @@ class _ReviewCard extends StatelessWidget {
   }
 }
 
-// class _RatingSummary extends StatelessWidget {
-//   final double avg;
-//   final int total;
-//   const _RatingSummary({required this.avg, required this.total});
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return Container(
-//       padding: const EdgeInsets.all(16),
-//       decoration: BoxDecoration(
-//         color: AppColors.surface,
-//         borderRadius: BorderRadius.circular(16),
-//         border: Border.all(color: AppColors.border),
-//       ),
-//       child: Row(
-//         children: [
-//           Text(
-//             avg.toStringAsFixed(1),
-//             style: const TextStyle(
-//               fontSize: 38,
-//               fontWeight: FontWeight.w800,
-//               color: AppColors.textPrimary,
-//             ),
-//           ),
-//           const SizedBox(width: 8),
-//           Column(
-//             crossAxisAlignment: CrossAxisAlignment.start,
-//             children: [
-//               _Stars(rating: avg.round(), size: 20),
-//               const SizedBox(height: 4),
-//               Text(
-//                 '$total review${total == 1 ? '' : 's'}',
-//                 style: const TextStyle(
-//                     fontSize: 12, color: AppColors.textSecondary),
-//               ),
-//             ],
-//           ),
-//         ],
-//       ),
-//     );
-//   }
-// }
-
-// class _Stars extends StatelessWidget {
-//   final int rating;
-//   final double size;
-//   const _Stars({required this.rating, this.size = 16});
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return Row(
-//       mainAxisSize: MainAxisSize.min,
-//       children: List.generate(
-//         5,
-//         (i) => Icon(
-//           i < rating ? Icons.star_rounded : Icons.star_border_rounded,
-//           size: size,
-//           color: Colors.amber[600],
-//         ),
-//       ),
-//     );
-//   }
-// }
+// ==================== Stat Card ====================
 
 class _StatCard extends StatelessWidget {
   final IconData icon;

@@ -114,4 +114,39 @@ class TransactionService {
     if (inner is! Map) throw Exception('Unexpected response');
     return FeesData.fromJson(Map<String, dynamic>.from(inner));
   }
+
+
+  Future<int> submitFeeClaim({
+  required double amount,
+  required String gcashReference,
+  required String gcashSenderName,
+  File? proofImage,
+}) async {
+  final data = <String, dynamic>{
+    'amount': amount,
+    'gcash_reference': gcashReference,
+    'gcash_sender_name': gcashSenderName,
+    if (proofImage != null)
+      'proof_image': await MultipartFile.fromFile(proofImage.path),
+  };
+  final res = await _api.dio.post(
+    '/me/fees/claim',
+    data: FormData.fromMap(data),
+  );
+  return res.data['data']['claim_id'] as int;
+}
+
+Future<List<FeeClaim>> myFeeClaims() async {
+  final res = await _api.dio.get('/me/fees/claims');
+  final envelope = res.data;
+  if (envelope is! Map) return const [];
+  final inner = envelope['data'];
+  if (inner is! Map) return const [];
+  final list = inner['data'];
+  if (list is! List) return const [];
+  return list
+      .whereType<Map>()
+      .map((m) => FeeClaim.fromJson(Map<String, dynamic>.from(m)))
+      .toList();
+}
 }

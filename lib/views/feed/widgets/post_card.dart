@@ -25,7 +25,7 @@ class PostCard extends StatelessWidget {
     final isOffer = post.type == 'offer';
     final ownerInitial =
         post.ownerName.isNotEmpty ? post.ownerName[0].toUpperCase() : '?';
-    final closed = post.isClosed;
+    final closed = post.isClosed || post.isExpired;
     final auth = context.watch<AuthController>();
     final isOwner = auth.user?.id == post.ownerId;
 
@@ -134,8 +134,7 @@ class PostCard extends StatelessWidget {
                                 Wrap(
                                   spacing: 6,
                                   runSpacing: 4,
-                                  crossAxisAlignment:
-                                      WrapCrossAlignment.center,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
                                     _TypePill(isOffer: isOffer),
                                     Text(
@@ -149,6 +148,25 @@ class PostCard extends StatelessWidget {
                                     ),
                                     if (closed)
                                       _StatusPill(status: post.status),
+                                    if (post.isExpired && !post.isClosed)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.textMuted
+                                              .withOpacity(0.12),
+                                          borderRadius:
+                                              BorderRadius.circular(20),
+                                        ),
+                                        child: const Text(
+                                          'Expired',
+                                          style: TextStyle(
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.textMuted,
+                                          ),
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ],
@@ -303,38 +321,39 @@ class PostCard extends StatelessWidget {
   }
 
   // ---- Tapping any image opens the viewer at that index ----
- /// Opens the viewer scoped to the item that owns the tapped image.
-void _openImage(BuildContext context, int globalIndex) {
-  // Walk through the items to find which one owns `globalIndex`
-  int running = 0;
-  for (final item in post.items) {
-    if (item.images.isEmpty) continue;
-    if (globalIndex < running + item.images.length) {
-      final localIndex = globalIndex - running;
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ImageViewerScreen(
-            post: post,
-            item: item,
-            initialIndex: localIndex,
+  /// Opens the viewer scoped to the item that owns the tapped image.
+  void _openImage(BuildContext context, int globalIndex) {
+    // Walk through the items to find which one owns `globalIndex`
+    int running = 0;
+    for (final item in post.items) {
+      if (item.images.isEmpty) continue;
+      if (globalIndex < running + item.images.length) {
+        final localIndex = globalIndex - running;
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ImageViewerScreen(
+              post: post,
+              item: item,
+              initialIndex: localIndex,
+            ),
           ),
-        ),
-      );
-      return;
+        );
+        return;
+      }
+      running += item.images.length;
     }
-    running += item.images.length;
+
+    // Fallback: image didn't map to any item — open with all images
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ImageViewerScreen(
+          post: post,
+          initialIndex: globalIndex,
+        ),
+      ),
+    );
   }
 
-  // Fallback: image didn't map to any item — open with all images
-  Navigator.of(context).push(
-    MaterialPageRoute(
-      builder: (_) => ImageViewerScreen(
-        post: post,
-        initialIndex: globalIndex,
-      ),
-    ),
-  );
-}
   void _openProfile(BuildContext context, {required bool isOwner}) {
     if (isOwner) {
       context.push('/profile');
@@ -417,8 +436,8 @@ void _openImage(BuildContext context, int globalIndex) {
       if (!context.mounted) return;
       _toast(
         context,
-        T.read(context,
-            saved ? 'saved_to_favorites' : 'removed_from_favorites'),
+        T.read(
+            context, saved ? 'saved_to_favorites' : 'removed_from_favorites'),
         success: saved,
       );
       context.read<FeedController>().load();
@@ -539,7 +558,8 @@ ${T.read(context, 'posted_by')} ${post.ownerName}
 
 ${T.read(context, 'via_pasabuy')}
 ${T.read(context, 'download_app')}: ${AppConstants.appDownloadUrl}
-'''.trim();
+'''
+        .trim();
 
     Share.share(text, subject: post.title);
   }
@@ -714,9 +734,7 @@ class _ImageGrid extends StatelessWidget {
                 Expanded(child: _tile(2)),
                 const SizedBox(width: 2),
                 Expanded(
-                  child: extra > 0
-                      ? _tileWithOverlay(3, '+$extra')
-                      : _tile(3),
+                  child: extra > 0 ? _tileWithOverlay(3, '+$extra') : _tile(3),
                 ),
               ],
             ),
@@ -802,7 +820,6 @@ class _ImageGrid extends StatelessWidget {
 // =====================================================================
 // Small widgets
 // =====================================================================
-
 class _TypePill extends StatelessWidget {
   final bool isOffer;
   const _TypePill({required this.isOffer});

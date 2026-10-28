@@ -46,12 +46,15 @@ class PostService {
     String? originLocation,
     String? destinationLocation,
     DateTime? travelDate,
-    required List<({
-      String title,
-      String description,
-      int? slots,
-      List<File> images,
-    })> items,
+    String? deadlineAt,
+    required List<
+            ({
+              String title,
+              String description,
+              int? slots,
+              List<File> images,
+            })>
+        items,
   }) async {
     final form = FormData();
     form.fields.add(MapEntry('title', title));
@@ -72,6 +75,10 @@ class PostService {
       ));
     }
 
+    if (deadlineAt != null) {
+      form.fields.add(MapEntry('deadline_at', deadlineAt));
+    }
+
     for (var i = 0; i < items.length; i++) {
       final it = items[i];
       form.fields.add(MapEntry('items[$i][title]', it.title));
@@ -90,61 +97,71 @@ class PostService {
     final res = await _api.dio.post('/posts', data: form);
     return res.data['data']['id'] as int;
   }
-Future<void> updateFull({
-  required int postId,
-  required String title,
-  required String description,
-  required String type,
-  String? originLocation,
-  String? destinationLocation,
-  DateTime? travelDate,
-  required List<({
-    int? id,                    // null = new item
-    String title,
-    String description,
-    int? slots,
-    List<File> newImages,       // only files picked NOW (empty = keep existing)
-  })> items,
-}) async {
-  final form = FormData();
-  form.fields.add(MapEntry('title', title));
-  form.fields.add(MapEntry('description', description));
-  form.fields.add(MapEntry('type', type));
-  if (originLocation != null && originLocation.isNotEmpty) {
-    form.fields.add(MapEntry('origin_location', originLocation));
-  }
-  if (destinationLocation != null && destinationLocation.isNotEmpty) {
-    form.fields.add(MapEntry('destination_location', destinationLocation));
-  }
-  if (travelDate != null) {
-    form.fields.add(MapEntry(
-      'travel_date',
-      '${travelDate.year}-'
-          '${travelDate.month.toString().padLeft(2, '0')}-'
-          '${travelDate.day.toString().padLeft(2, '0')}',
-    ));
-  }
 
-  for (var i = 0; i < items.length; i++) {
-    final it = items[i];
-    if (it.id != null) {
-      form.fields.add(MapEntry('items[$i][id]', '${it.id}'));
+  Future<void> updateFull({
+    required int postId,
+    required String title,
+    required String description,
+    required String type,
+    String? originLocation,
+    String? destinationLocation,
+    DateTime? travelDate,
+    String? deadlineAt,
+    required List<
+            ({
+              int? id, // null = new item
+              String title,
+              String description,
+              int? slots,
+              List<
+                  File> newImages, // only files picked NOW (empty = keep existing)
+            })>
+        items,
+  }) async {
+    final form = FormData();
+    form.fields.add(MapEntry('title', title));
+    form.fields.add(MapEntry('description', description));
+    form.fields.add(MapEntry('type', type));
+    if (originLocation != null && originLocation.isNotEmpty) {
+      form.fields.add(MapEntry('origin_location', originLocation));
     }
-    form.fields.add(MapEntry('items[$i][title]', it.title));
-    form.fields.add(MapEntry('items[$i][description]', it.description));
-    if (it.slots != null) {
-      form.fields.add(MapEntry('items[$i][slots]', '${it.slots}'));
+    if (destinationLocation != null && destinationLocation.isNotEmpty) {
+      form.fields.add(MapEntry('destination_location', destinationLocation));
     }
-    for (final f in it.newImages) {
-      form.files.add(MapEntry(
-        'item_images[$i][]',
-        await MultipartFile.fromFile(f.path),
+    if (travelDate != null) {
+      form.fields.add(MapEntry(
+        'travel_date',
+        '${travelDate.year}-'
+            '${travelDate.month.toString().padLeft(2, '0')}-'
+            '${travelDate.day.toString().padLeft(2, '0')}',
       ));
     }
+
+    if (deadlineAt != null) {
+      form.fields.add(MapEntry('deadline_at', deadlineAt));
+    }
+
+    for (var i = 0; i < items.length; i++) {
+      final it = items[i];
+      if (it.id != null) {
+        form.fields.add(MapEntry('items[$i][id]', '${it.id}'));
+      }
+      form.fields.add(MapEntry('items[$i][title]', it.title));
+      form.fields.add(MapEntry('items[$i][description]', it.description));
+      if (it.slots != null) {
+        form.fields.add(MapEntry('items[$i][slots]', '${it.slots}'));
+      }
+      for (final f in it.newImages) {
+        form.files.add(MapEntry(
+          'item_images[$i][]',
+          await MultipartFile.fromFile(f.path),
+        ));
+      }
+    }
+
+    await _api.dio.post('/posts/$postId/full', data: form);
   }
 
- await _api.dio.post('/posts/$postId/full', data: form);
-}
   Future<void> close(int postId) async {
     await _api.dio.post('/posts/$postId/close');
   }

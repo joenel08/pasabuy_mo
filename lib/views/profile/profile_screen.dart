@@ -785,7 +785,8 @@ class _MyPostsState extends State<_MyPosts> {
     setState(() => _loading = true);
     try {
       final svc = context.read<PostService>();
-      final list = await svc.fetch(mine: true, status: 'any');
+      // final list = await svc.fetch(mine: true, status: 'any');
+      final list = await svc.fetch(mine: true, status: null);
       if (!mounted) return;
       setState(() => _posts = list);
     } catch (e) {

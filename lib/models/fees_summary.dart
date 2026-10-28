@@ -113,3 +113,51 @@ double _d(dynamic v) {
   if (v is String) return double.tryParse(v) ?? 0.0;
   return 0.0;
 }
+
+
+class FeeClaim {
+  final int id;
+  final double amount;
+  final String? gcashReference;
+  final String? gcashSenderName;
+  final String? proofImageUrl;
+  final String status; // pending | approved | rejected
+  final DateTime createdAt;
+  final DateTime? reviewedAt;
+  final String? rejectionReason;
+  final int appliedCount;
+  final double appliedAmount;
+  final double leftoverAmount;
+
+  FeeClaim({
+    required this.id,
+    required this.amount,
+    this.gcashReference,
+    this.gcashSenderName,
+    this.proofImageUrl,
+    required this.status,
+    required this.createdAt,
+    this.reviewedAt,
+    this.rejectionReason,
+    this.appliedCount = 0,
+    this.appliedAmount = 0,
+    this.leftoverAmount = 0,
+  });
+
+  factory FeeClaim.fromJson(Map<String, dynamic> j) => FeeClaim(
+        id: (j['id'] ?? 0) as int,
+        amount: _d(j['amount']),
+        gcashReference: j['gcash_reference'] as String?,
+        gcashSenderName: j['gcash_sender_name'] as String?,
+        proofImageUrl: j['proof_image_url'] as String?,
+        status: (j['status'] ?? 'pending').toString(),
+        createdAt: DateTime.tryParse(j['created_at']?.toString() ?? '') ?? DateTime.now(),
+        reviewedAt: j['reviewed_at'] != null
+            ? DateTime.tryParse(j['reviewed_at'].toString())
+            : null,
+        rejectionReason: j['rejection_reason'] as String?,
+        appliedCount: (j['applied_count'] ?? 0) as int,
+        appliedAmount: _d(j['applied_amount']),
+        leftoverAmount: _d(j['leftover_amount']),
+      );
+}

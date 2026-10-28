@@ -35,6 +35,16 @@ class Post {
       status == 'closed' || status == 'cancelled' || status == 'completed';
   bool get isOffer => type == 'offer';
 
+  bool get isExpired {
+    if (travelDate == null) return false;
+    final today = DateTime.now();
+    final travel =
+        DateTime(travelDate!.year, travelDate!.month, travelDate!.day);
+    final todayDate = DateTime(today.year, today.month, today.day);
+    // Expired when travel date has arrived (today or past)
+    return !travel.isAfter(todayDate);
+  }
+
   /// Aggregate first image across items (for feed thumbnail)
   List<String> get images => items.expand((i) => i.images).toList();
 

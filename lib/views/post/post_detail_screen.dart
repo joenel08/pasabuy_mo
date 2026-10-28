@@ -40,6 +40,15 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   }
 
   Future<void> _messageItem(PostItem item) async {
+    if (_post.isExpired) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This pasabuy has already started or ended.'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
     if (item.isFull) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('This item is already full')),
@@ -158,6 +167,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                   item: item,
                   isOwner: isOwner,
                   isPostClosed: _post.isClosed,
+                  isPostExpired: _post.isExpired, // ← NEW
                   isLoading: _openingItemId == item.id,
                   onMessage: () => _messageItem(item),
                 ),
@@ -169,11 +179,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 }
 
 // ---------------------------------------------------------------------------
-
 class _ItemCard extends StatelessWidget {
   final PostItem item;
   final bool isOwner;
   final bool isPostClosed;
+  final bool isPostExpired;
   final bool isLoading;
   final VoidCallback onMessage;
 
@@ -181,13 +191,24 @@ class _ItemCard extends StatelessWidget {
     required this.item,
     required this.isOwner,
     required this.isPostClosed,
+    required this.isPostExpired,
     required this.isLoading,
     required this.onMessage,
   });
 
   @override
   Widget build(BuildContext context) {
-    final disabled = isPostClosed || item.isFull || isOwner;
+    final disabled = isPostClosed || isPostExpired || item.isFull || isOwner;
+
+    // Label logic
+    final String label;
+    if (isPostClosed || isPostExpired) {
+      label = 'Pasabuy ended';
+    } else if (item.isFull) {
+      label = 'Item full';
+    } else {
+      label = 'Message seller';
+    }
 
     return Container(
       decoration: BoxDecoration(
@@ -250,9 +271,8 @@ class _ItemCard extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 10.5,
                             fontWeight: FontWeight.w700,
-                            color: item.isFull
-                                ? AppColors.danger
-                                : AppColors.info,
+                            color:
+                                item.isFull ? AppColors.danger : AppColors.info,
                           ),
                         ),
                       ),
@@ -283,8 +303,7 @@ class _ItemCard extends StatelessWidget {
                             )
                           : const Icon(Icons.chat_bubble_outline_rounded,
                               size: 16),
-                      label: Text(
-                          disabled ? 'Item unavailable' : 'Message seller'),
+                      label: Text(label),
                       onPressed: disabled || isLoading ? null : onMessage,
                     ),
                   ),
