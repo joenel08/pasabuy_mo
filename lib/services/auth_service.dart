@@ -29,7 +29,8 @@ class AuthService {
 
     final envelope = res.data;
     if (envelope is! Map) {
-      throw Exception('Login: unexpected response type ${envelope.runtimeType}');
+      throw Exception(
+          'Login: unexpected response type ${envelope.runtimeType}');
     }
     final payload = envelope['data'];
     if (payload is! Map) {
@@ -62,6 +63,24 @@ class AuthService {
       if (code == 401 || code == 403) return null;
       rethrow;
     }
+  }
+
+  Future<void> forgotPassword(String email) async {
+    await _api.dio.post('/auth/forgot-password', data: {'email': email});
+  }
+
+  Future<void> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+    required String newPasswordConfirmation,
+  }) async {
+    await _api.dio.post('/auth/reset-password', data: {
+      'email': email,
+      'code': code,
+      'new_password': newPassword,
+      'new_password_confirmation': newPasswordConfirmation,
+    });
   }
 
   Future<void> logout() async {

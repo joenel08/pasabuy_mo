@@ -56,6 +56,24 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  Future<void> forgotPassword(String email) async {
+    await _service.forgotPassword(email);
+  }
+
+  Future<void> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+    required String newPasswordConfirmation,
+  }) async {
+    await _service.resetPassword(
+      email: email,
+      code: code,
+      newPassword: newPassword,
+      newPasswordConfirmation: newPasswordConfirmation,
+    );
+  }
+
   Future<void> logout() async {
     await _service.logout();
     user = null;

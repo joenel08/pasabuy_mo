@@ -27,7 +27,12 @@ class _ItemForm {
 
 class PostFormScreen extends StatefulWidget {
   final String initialType;
-  const PostFormScreen({super.key, this.initialType = 'offer'});
+  final List<File>? initialImages;
+  const PostFormScreen({
+    super.key,
+    this.initialType = 'offer',
+    this.initialImages,
+  });
   @override
   State<PostFormScreen> createState() => _PostFormScreenState();
 }
@@ -43,6 +48,16 @@ class _PostFormScreenState extends State<PostFormScreen> {
   DateTime? _travelDate;
   final List<_ItemForm> _items = [_ItemForm()];
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Pre-populate the first item with images picked from the composer card
+    if (widget.initialImages != null && widget.initialImages!.isNotEmpty) {
+      _items.first.images.addAll(widget.initialImages!.take(5));
+    }
+  }
 
   @override
   void dispose() {
@@ -92,7 +107,8 @@ class _PostFormScreenState extends State<PostFormScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-// Quick pre-check — fetch fees and warn early if blocked
+
+    // Quick pre-check — fetch fees and warn early if blocked
     try {
       final fees = await context.read<TransactionService>().myFees();
       if (fees.isBlocked && mounted) {

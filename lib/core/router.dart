@@ -28,6 +28,11 @@ import '../views/report/report_target_screen.dart';
 import '../views/post/post_detail_screen.dart';
 import '../views/deals/my_fees_screen.dart';
 
+import '../views/auth/forgot_password_screen.dart';
+
+import '../views/auth/reset_password_screen.dart';
+import 'dart:io';
+
 class AppRouter {
   static late GoRouter router;
 }
@@ -43,8 +48,11 @@ GoRouter buildRouter(AuthController auth) {
       }
 
       final loggedIn = auth.loggedIn;
-      final atAuth =
-          loc == '/login' || loc == '/register' || loc == '/verify-email';
+      final atAuth = loc == '/login' ||
+          loc == '/register' ||
+          loc == '/verify-email' ||
+          loc == '/forgot-password' ||
+          loc == '/reset-password';
 
       if (!loggedIn) return atAuth ? null : '/login';
       if (!auth.emailVerified) return loc == '/verify-email' ? null : '/login';
@@ -84,12 +92,27 @@ GoRouter buildRouter(AuthController auth) {
       GoRoute(
           path: '/onboarding/declined',
           builder: (_, __) => const DeclinedScreen()),
+      GoRoute(
+        path: '/forgot-password',
+        builder: (_, __) => const ForgotPasswordScreen(),
+      ),
+      GoRoute(
+        path: '/reset-password',
+        builder: (_, s) =>
+            ResetPasswordScreen(email: (s.extra as String?) ?? ''),
+      ),
       GoRoute(path: '/', builder: (_, __) => const MainShell()),
       GoRoute(
         path: '/post/new',
         builder: (_, s) {
           final t = s.uri.queryParameters['type'] ?? 'offer';
-          return PostFormScreen(initialType: t);
+          final images = (s.extra is List)
+              ? (s.extra as List).whereType<File>().toList()
+              : <File>[];
+          return PostFormScreen(
+            initialType: t,
+            initialImages: images.isEmpty ? null : images,
+          );
         },
       ),
       GoRoute(

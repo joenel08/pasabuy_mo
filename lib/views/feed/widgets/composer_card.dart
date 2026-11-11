@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../../controllers/auth_controller.dart';
@@ -9,6 +11,26 @@ import '../../../core/translations.dart';
 
 class ComposerCard extends StatelessWidget {
   const ComposerCard({super.key});
+
+  Future<void> _pickImagesAndOpen(BuildContext context) async {
+    final picked = await ImagePicker().pickMultiImage(
+      imageQuality: 75,
+      maxWidth: 1600,
+      maxHeight: 1600,
+    );
+
+    if (!context.mounted) return;
+
+    if (picked.isEmpty) {
+      // User cancelled — do nothing (don't force them into the form)
+      return;
+    }
+
+    final files = picked.map((x) => File(x.path)).take(5).toList();
+
+    // Navigate to the form with the images already attached
+    context.push('/post/new?type=offer', extra: files);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -118,7 +140,7 @@ class ComposerCard extends StatelessWidget {
                   icon: Icons.image_outlined,
                   color: AppColors.info,
                   label: T.of(context, 'photo'),
-                  onTap: () => context.push('/post/new'),
+                  onTap: () => _pickImagesAndOpen(context),
                 ),
               ],
             ),
